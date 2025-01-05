@@ -5,16 +5,23 @@ from functools import partial
 from typing import Callable, Optional, Any, TypeVar, Generic
 from typing_extensions import TypeAliasType
 
-type PartialContainerKey = str | type | TypeAliasType | Callable
-type PartialContainerObject = Any | FromContainer
+from .error_handling import DoNotCatchThisException
+
+type ContainerKey = str | type | TypeAliasType | Callable
+type ContainerObject = Any | FromContainer
 
 class Container: # TODO: Add validation and proper error handling
+    """
+    This is a dependency injection tool that was designed to work with functions for those, who employs techniques of FP.
+    It has got such name because it uses and is primarily based on partial function capabilities of Python.
+    """
+
     def __init__(self):
-        self.__registered = dict[PartialContainerKey, Container.Registration]()
-        self.__built = dict[PartialContainerKey, Any]()
+        self.__registered = dict[ContainerKey, Container.Registration]()
+        self.__built = dict[ContainerKey, Any]()
         self.__is_built = False
 
-    def register_instance(self, obj: PartialContainerObject, key: Optional[PartialContainerKey] = None):
+    def register_instance(self, obj: ContainerObject, inject_returns: bool = False, key: Optional[ContainerKey] = None):
         if self.__is_built:
             raise Exception("Container already built")
 
@@ -23,13 +30,14 @@ class Container: # TODO: Add validation and proper error handling
         if actual_key in self.__registered:
             raise Exception(f"The object with key {actual_key} already registered")
 
-        self.__registered[actual_key] = Container.Registration(Container.RegistrationType.INSTANCE, obj)
+        self.__registered[actual_key] = Container.Registration(Container.RegistrationType.INSTANCE, obj, inject_returns=inject_returns)
 
     def register_factory(self,
                          factory: Callable,
-                         args: Optional[list[PartialContainerObject]]=None,
-                         kwargs: Optional[dict[str, PartialContainerObject]]=None,
-                         key: Optional[PartialContainerKey] = None):
+                         args: Optional[list[ContainerObject]]=None,
+                         kwargs: Optional[dict[str, ContainerObject]]=None,
+                         inject_returns: bool = False,
+                         key: Optional[ContainerKey] = None):
         if self.__is_built:
             raise Exception("Container already built")
 
@@ -39,14 +47,14 @@ class Container: # TODO: Add validation and proper error handling
             raise Exception(f"The object with key {actual_key} already registered")
 
         self.__registered[actual_key] = Container.Registration(Container.RegistrationType.FACTORY,
-                                                                      factory, args, kwargs)
+                                                               factory, args=args, kwargs=kwargs, inject_returns=inject_returns)
 
     def build(self) -> None:
         for key, registration in self.__registered.items():
             self.__build_dependency(key)
         self.__is_built = True
 
-    def resolve(self, key: PartialContainerKey):
+    def resolve(self, key: ContainerKey):
         if not self.__is_built:
             raise Exception("Container not built")
 
@@ -72,7 +80,7 @@ class Container: # TODO: Add validation and proper error handling
                 self.__build_dependency(registration.obj.source_key)
                 self.__built[key] = registration.obj(self.__built)
             case _ if registration.type == Container.RegistrationType.INSTANCE and not isinstance(registration.obj, FromContainer) and callable(registration.obj):
-                partial_func = self.__get_partial(key)
+                partial_func = self.__build_partial(registration.obj, registration.inject_returns)
                 self.__built[key] = partial_func
             case _ if registration.type == Container.RegistrationType.INSTANCE and not isinstance(registration.obj, FromContainer) and not callable(registration.obj):
                 self.__built[key] = registration
@@ -80,7 +88,7 @@ class Container: # TODO: Add validation and proper error handling
                 obj = self.__execute_factory(registration.obj, registration.args, registration.kwargs)
                 match obj:
                     case _ if callable(obj):
-                        partial_func = self.__get_partial(key)
+                        partial_func = self.__build_partial(registration.obj, registration.inject_returns)
                         self.__built[key] = partial_func
                     case _ if isinstance(obj, FromContainer):
                         raise Exception("Cannot build FromContainer object")
@@ -88,8 +96,8 @@ class Container: # TODO: Add validation and proper error handling
                         self.__built[key] = obj
 
     def __execute_factory(self, factory: Callable,
-                          args: Optional[list[PartialContainerObject]]=None,
-                          kwargs: Optional[dict[str, PartialContainerObject]]=None):
+                          args: Optional[list[ContainerObject]]=None,
+                          kwargs: Optional[dict[str, ContainerObject]]=None):
         match factory:
             case _ if args is not None and kwargs is not None:
                 return factory(*args, **kwargs)
@@ -100,7 +108,7 @@ class Container: # TODO: Add validation and proper error handling
             case _:
                 return factory()
 
-    def __build_from_container_args(self, obj: list[PartialContainerObject]):
+    def __build_from_container_args(self, obj: list[ContainerObject]):
         unwrapped = []
         for item in obj:
             match item:
@@ -111,7 +119,7 @@ class Container: # TODO: Add validation and proper error handling
                     unwrapped.append(item)
         return unwrapped
 
-    def __build_from_container_kwargs(self, obj: dict[str, PartialContainerObject]):
+    def __build_from_container_kwargs(self, obj: dict[str, ContainerObject]):
         unwrapped = {}
         for key, item in obj.items():
             match item:
@@ -122,26 +130,65 @@ class Container: # TODO: Add validation and proper error handling
                     unwrapped[key] = item
         return unwrapped
 
-    def __get_partial(self, reg_key):
-        func = self.__registered[reg_key].obj
+    def __build_partial(self, func: Callable, inject_returns: bool) -> Callable:
         sig = inspect.signature(func)
 
         if len(sig.parameters) == 0:
-            return func
+            return self.__get_with_returns_injected(func) if inject_returns else func
 
         partial_args = []
 
+        last_not_registered_param = None
         for param_name, param in sig.parameters.items():
             dep_key = param_name if param_name in self.__registered else param.annotation if param.annotation in self.__registered else None
 
             if not dep_key is None:
+                if last_not_registered_param is not None:
+                    raise DoNotCatchThisException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
                 self.__build_dependency(dep_key)
                 partial_args.append(self.__built[dep_key])
+            else:
+                last_not_registered_param = param_name
 
         if len(partial_args) == 0:
-            return func
+            return self.__get_with_returns_injected(func) if inject_returns else func
 
-        return partial(func, *partial_args)
+        partial_func = partial(func, *partial_args)
+        return self.__get_with_returns_injected(partial_func) if inject_returns else partial_func
+
+    def __compose_and_build_partial(self, func: Callable, inject_returns: bool) -> Callable:
+        sig = inspect.signature(func)
+
+        if len(sig.parameters) == 0:
+            return self.__get_with_returns_injected(func) if inject_returns else func
+
+        partial_args = []
+
+        last_not_registered_param = None
+        for param_name, param in sig.parameters.items():
+            dep_key = param_name if param_name in self.__built else param.annotation if param.annotation in self.__built else None
+
+            if not dep_key is None:
+                if last_not_registered_param is not None:
+                    raise DoNotCatchThisException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
+                self.__build_dependency(dep_key)
+                partial_args.append(self.__built[dep_key])
+            else:
+                last_not_registered_param = param_name
+
+        if len(partial_args) == 0:
+            return self.__get_with_returns_injected(func) if inject_returns else func
+
+        partial_func = partial(func, *partial_args)
+        return self.__get_with_returns_injected(partial_func) if inject_returns else partial_func
+
+    def __get_with_returns_injected(self, func):
+        def func_with_injected_returns(*args, **kwargs):
+            result = func(*args, **kwargs)
+            if callable(result):
+                return self.__compose_and_build_partial(result, True)
+            return result
+        return func_with_injected_returns
 
     class RegistrationType(Enum):
         INSTANCE = 1
@@ -153,8 +200,9 @@ class Container: # TODO: Add validation and proper error handling
         obj: Any
         args: Optional[list[Any]] = None
         kwargs: Optional[dict[str, Any]] = None
+        inject_returns: bool = False
 
-TDependencyKey = TypeVar('TDependencyKey', bound=PartialContainerKey)
+TDependencyKey = TypeVar('TDependencyKey', bound=ContainerKey)
 @dataclass
 class FromContainer(Generic[TDependencyKey]):
     source_key: TDependencyKey
