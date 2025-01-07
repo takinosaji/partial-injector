@@ -5,7 +5,7 @@ from functools import partial
 from typing import Callable, Optional, Any, TypeVar, Generic
 from typing_extensions import TypeAliasType
 
-from .error_handling import DoNotCatchThisException
+from .error_handling import TerminationException
 
 type ContainerKey = str | type | TypeAliasType | Callable
 type ContainerObject = Any | FromContainer
@@ -83,7 +83,7 @@ class Container: # TODO: Add validation and proper error handling
                 partial_func = self.__build_partial(registration.obj, registration.inject_returns)
                 self.__built[key] = partial_func
             case _ if registration.type == Container.RegistrationType.INSTANCE and not isinstance(registration.obj, FromContainer) and not callable(registration.obj):
-                self.__built[key] = registration
+                self.__built[key] = registration.obj
             case _ if registration.type == Container.RegistrationType.FACTORY:
                 obj = self.__execute_factory(registration.obj, registration.args, registration.kwargs)
                 match obj:
@@ -144,7 +144,7 @@ class Container: # TODO: Add validation and proper error handling
 
             if not dep_key is None:
                 if last_not_registered_param is not None:
-                    raise DoNotCatchThisException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
+                    raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
                 self.__build_dependency(dep_key)
                 partial_args.append(self.__built[dep_key])
             else:
@@ -170,7 +170,7 @@ class Container: # TODO: Add validation and proper error handling
 
             if not dep_key is None:
                 if last_not_registered_param is not None:
-                    raise DoNotCatchThisException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
+                    raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
                 self.__build_dependency(dep_key)
                 partial_args.append(self.__built[dep_key])
             else:
@@ -191,8 +191,8 @@ class Container: # TODO: Add validation and proper error handling
         return func_with_injected_returns
 
     class RegistrationType(Enum):
-        INSTANCE = 1
-        FACTORY = 2
+        INSTANCE = "INSTANCE"
+        FACTORY = "FACTORY"
 
     @dataclass
     class Registration:
