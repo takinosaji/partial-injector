@@ -4,7 +4,7 @@ from setuptools import setup, find_namespace_packages
 setup_py_path = os.path.abspath(__file__)
 setup_py_dir_path = os.path.abspath(os.path.dirname(setup_py_path))
 version_file_name = "VERSION.txt"
-version_file_path = f"{setup_py_dir_path}/../{version_file_name}"
+version_file_path = f"{setup_py_dir_path}/{version_file_name}"
 
 setup(
     name='partial-injector',
@@ -26,7 +26,7 @@ setup(
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
-        'License :: MIT',
+        'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
     python_requires='>=3.13'
