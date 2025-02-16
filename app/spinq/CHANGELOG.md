@@ -6,10 +6,10 @@
 
 _*Fixed*_
 
-- BOM in README files
+- Missing package content
 
 ## 1.0.0 - 2025-02-16
 
 _*Added*_
 
-- First version of partial-injector
+- First version of spinq
