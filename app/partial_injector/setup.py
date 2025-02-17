@@ -1,4 +1,4 @@
-﻿import os
+import os
 from setuptools import setup, find_namespace_packages
 
 setup_py_path = os.path.abspath(__file__)

@@ -1,4 +1,4 @@
-﻿import subprocess
+import subprocess
 
 # TODO: move to dev folder in root and include resolution of venv
 
