@@ -1,9 +1,12 @@
-﻿import subprocess
+import subprocess
 
 # TODO: move to dev folder in root and include resolution of venv
 
 # List of package names to be uninstalled
 packages_to_uninstall = [
+    'spinq',
+    'spinq-demo',
+    'spinq-tests',
     'partial-injector',
     'partial-injector-demo',
     'partial-injector-tests'
@@ -16,6 +19,7 @@ def uninstall_packages(package_paths):
             print(f'Successfully uninstalled {package}.')
         except subprocess.CalledProcessError as e:
             print(f'Failed to uninstall {package}. Error: {e}')
+            raise e
 
 if __name__ == '__main__':
     uninstall_packages(packages_to_uninstall)

@@ -1,3 +1,4 @@
+import os.path
 import shutil
 import subprocess
 import argparse
@@ -5,8 +6,11 @@ import argparse
 def install_package(packages: list[str], version_file_path: str, editable: bool):
     for path in packages:
         try:
-            shutil.copyfile(version_file_path, f"{path}/VERSION.txt")
-            command = ['pip', 'install']
+            version_file_target_path = f"{path}/VERSION.txt"
+            if not os.path.exists(version_file_target_path):
+                shutil.copyfile(version_file_path, version_file_target_path)
+
+            command = ['pip', 'install', '--no-cache-dir']
             if editable:
                 command.append('-e')
             command.append(path)
@@ -14,6 +18,7 @@ def install_package(packages: list[str], version_file_path: str, editable: bool)
             print(f'Successfully installed {path} in {'development' if editable else 'production'} mode.')
         except subprocess.CalledProcessError as e:
             print(f'Failed to install {path} in {'development' if editable else 'production'} mode. Error: {e}')
+            raise e
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Primary Adapters')

@@ -1,5 +1,5 @@
-﻿__version__ = "1.0.0"
-__author__ = "kostiantyn.chomakov@syngenta.com"
+__version__ = "1.0.0"
+__author__ = "kostiantyn.chomakov@gmail.com"
 
 # Import submodules
 

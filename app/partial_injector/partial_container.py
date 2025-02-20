@@ -1,4 +1,4 @@
-﻿import inspect
+import inspect
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial

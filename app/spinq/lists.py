@@ -1,4 +1,4 @@
-﻿from typing import Callable, TypeVar, Optional
+from typing import Callable, TypeVar, Optional
 from collections.abc import Iterable
 
 T = TypeVar('T')
