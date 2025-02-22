@@ -6,10 +6,12 @@ import subprocess
 packages_to_uninstall = [
     'spinq',
     'spinq-demo',
-    'spinq-tests',
+    'test-spinq',
     'partial-injector',
     'partial-injector-demo',
-    'partial-injector-tests'
+    'test-partial-injector',
+    'sversion',
+    'test-sversion'
 ]
 
 def uninstall_packages(package_paths):

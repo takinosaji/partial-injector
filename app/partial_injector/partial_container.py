@@ -3,8 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from inspect import isfunction
-from typing import Callable, Optional, Any, TypeVar, Generic
-from typing_extensions import TypeAliasType
+from typing import Callable, Optional, Any, TypeVar, Generic, TypeAliasType
 
 from .error_handling import TerminationException
 
@@ -204,6 +203,14 @@ class Container: # TODO: Add validation and proper error handling
         return self.__get_with_returns_injected(partial_func) if inject_returns else partial_func
 
     def __get_with_returns_injected(self, func):
+        if inspect.iscoroutinefunction(func):
+            async def async_func_with_injected_returns(*args, **kwargs):
+                result = await func(*args, **kwargs)
+                if isfunction(result):
+                    return self.__build_partial(result, True)
+                return result
+            return async_func_with_injected_returns
+
         def func_with_injected_returns(*args, **kwargs):
             result = func(*args, **kwargs)
             if isfunction(result):

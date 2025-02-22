@@ -4,6 +4,6 @@ __author__ = "kostiantyn.chomakov@gmail.com"
 
 # Import submodules
 
-from . import partial_container, error_handling
+from . import test_partial_container
 
-__all__ = ['partial_container', 'error_handling']
+__all__ = ['test_partial_container']

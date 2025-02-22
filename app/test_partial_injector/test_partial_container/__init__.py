@@ -4,6 +4,6 @@ __author__ = "kostiantyn.chomakov@gmail.com"
 
 # Import submodules
 
-from . import partial_container, error_handling
+from . import test_case_injected_async_output
 
-__all__ = ['partial_container', 'error_handling']
+__all__ = ['test_case_injected_async_output']
