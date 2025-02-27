@@ -1,5 +1,4 @@
 import asyncio
-
 import pytest
 
 from partial_injector.partial_container import Container

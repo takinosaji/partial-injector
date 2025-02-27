@@ -2,6 +2,12 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 2.1.1 - 2025-02-27
+
+_*Fixed*_
+
+- Multiple registrations of dependencies with same key
+
 ## 2.1.0 - 2025-02-22
 
 _*Added*_

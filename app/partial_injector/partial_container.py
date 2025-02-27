@@ -17,7 +17,7 @@ class Container: # TODO: Add validation and proper error handling
     """
 
     def __init__(self):
-        self.__registered = dict[ContainerKey, Container.Registration | Container.RegistrationsContainer[Container.Registration]]()
+        self.__registered = dict[ContainerKey, Container.Registration | Container.RegistrationContainer[Container.Registration]]()
         self.__built = dict[ContainerKey, Container.BuiltContainer[Any] | Any]()
         self.__is_built = False
 
@@ -40,14 +40,27 @@ class Container: # TODO: Add validation and proper error handling
                                               condition_args=condition_args,
                                               condition_kwargs=condition_kwargs)
 
-        if actual_key in self.__registered:
-            container = Container.RegistrationsContainer()
-            container.append(self.__registered[actual_key])
-            container.append(registration)
-            self.__registered[actual_key] = container
-            return None
+        if Container.RegistrationContainer[actual_key] in self.__registered and isinstance(self.__registered[Container.RegistrationContainer[actual_key]], Container.RegistrationContainer):
+            self.__registered[Container.RegistrationContainer[actual_key]].append(registration)
+        elif actual_key in self.__registered:
+            container = Container.RegistrationContainer()
+            container.registrations.append(self.__registered[actual_key])
+            container.registrations.append(registration)
+            self.__registered[Container.RegistrationContainer[actual_key]] = container
+            del self.__registered[actual_key]
+        else:
+        #
+        # if actual_key in self.__registered:
+        #     container = Container.RegistrationContainer()
+        #     if isinstance(self.__registered[actual_key], Container.RegistrationContainer):
+        #         container.registrations.extend(self.__registered[actual_key].registrations)
+        #     else:
+        #         container.registrations.append(self.__registered[actual_key])
+        #     container.registrations.append(registration)
+        #     self.__registered[actual_key] = container
+        #     return None
 
-        self.__registered[actual_key] = registration
+            self.__registered[actual_key] = registration
         return None
 
     def register_factory(self,
@@ -73,8 +86,11 @@ class Container: # TODO: Add validation and proper error handling
                                               condition_args=condition_args,
                                               condition_kwargs=condition_kwargs)
         if actual_key in self.__registered:
-            container = Container.RegistrationsContainer()
-            container.append(self.__registered[actual_key])
+            container = Container.RegistrationContainer()
+            if isinstance(self.__registered[actual_key], Container.RegistrationContainer):
+                container.extend(self.__registered[actual_key].registrations)
+            else:
+                container.append(self.__registered[actual_key])
             container.append(registration)
             self.__registered[actual_key] = container
             return None
@@ -96,7 +112,7 @@ class Container: # TODO: Add validation and proper error handling
 
         container = Container.BuiltContainer()
 
-        registrations = self.__registered[key] if isinstance(self.__registered[key], Container.RegistrationsContainer) else [self.__registered[key]]
+        registrations = self.__registered[key].registrations if isinstance(self.__registered[key], Container.RegistrationContainer) else [self.__registered[key]]
         for registration in registrations:
             if registration.condition is not None:
                 if not self.__execute_with_injections(registration.condition, registration.condition_args, registration.condition_kwargs):
@@ -124,10 +140,12 @@ class Container: # TODO: Add validation and proper error handling
                 case _:
                     raise TerminationException("Unknown registration type")
 
-        if len(container) == 1:
-            self.__built[key] = container[0]
-        elif len(container) > 1:
-            self.__built[key] = container
+        built_key = list[key.__args__[0]] if hasattr(key, '__origin__') and key.__origin__ == Container.RegistrationContainer else key
+
+        if len(container.built_dependencies) == 1:
+            self.__built[built_key] = container.built_dependencies[0]
+        elif len(container.built_dependencies) > 1:
+            self.__built[built_key] = container
 
     def __execute_with_injections(self, factory: Callable,
                                   args: Optional[list[ContainerObject]]=None,
@@ -186,13 +204,21 @@ class Container: # TODO: Add validation and proper error handling
 
             if not dep_key is None:
                 if last_not_registered_param is not None:
-                    raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}")
+                    raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}:{param.annotation}")
+
                 self.__build_dependency(dep_key)
+
                 if dep_key not in self.__built:
                     raise TerminationException(f"Object with key {dep_key} was not built and cannot be resolved because built conditions have not been met.")
-                if isinstance(self.__built[dep_key], Container.BuiltContainer):
-                    raise TerminationException(f"Cannot resolve dependency from the list of registered under key {dep_key} because more than one object is available under this key")
-                partial_args.append(self.__built[dep_key])
+
+                # if isinstance(self.__built[dep_key], Container.BuiltContainer):
+                #     raise TerminationException(f"Cannot resolve dependency from the list of registered under key {dep_key} because more than one object is available under this key")
+
+                built_dependency = self.__built[dep_key]
+                if isinstance(built_dependency, Container.BuiltContainer):
+                    built_dependency = built_dependency.built_dependencies
+
+                partial_args.append(built_dependency)
             else:
                 last_not_registered_param = param_name
 
@@ -222,11 +248,14 @@ class Container: # TODO: Add validation and proper error handling
         if not self.__is_built:
             raise TerminationException("Container not built")
 
-        if not key in self.__registered:
+        if not key in self.__registered and hasattr(key, '__args__') and Container.RegistrationContainer[key.__args__[0]] not in self.__registered:
             raise TerminationException(f"Object with key {key} not registered")
 
-        if not key in self.__built:
+        if not key in self.__built and Container.BuiltContainer[key] not in self.__built:
             raise TerminationException(f"Object with key {key} not built")
+
+        # if isinstance(self.__built[key], Container.BuiltContainer):
+        #     return self.__built[key].built_dependencies
 
         return self.__built[key]
 
@@ -246,11 +275,28 @@ class Container: # TODO: Add validation and proper error handling
         condition_kwargs: Optional[dict[str, Any]] = None
 
     T = TypeVar('T')
-    class RegistrationsContainer(Generic[T], list[T]):
-        pass
+    class RegistrationContainer(Generic[T]):
+        def __init__(self, *args):
+            if len(args) == 0:
+                self.registrations = []
+                return
+            self.registrations = args[0] if len(args) == 1 and isinstance(args[0], list) else args
 
-    class BuiltContainer(Generic[T], list[Any]):
-        pass
+        def extend(self, *args, **kwargs):
+            self.registrations.append(args, kwargs)
+
+        def append(self, registration):
+            self.registrations.append(registration)
+
+    class BuiltContainer(Generic[T]):
+        def __init__(self, *args):
+            if len(args) == 0:
+                self.built_dependencies = []
+                return
+            self.built_dependencies = args[0] if len(args) == 1 and isinstance(args[0], list) else args
+
+        def append(self, built_dependency):
+            self.built_dependencies.append(built_dependency)
 
 TDependencyKey = TypeVar('TDependencyKey', bound=ContainerKey)
 @dataclass
