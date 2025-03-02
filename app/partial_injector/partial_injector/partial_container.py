@@ -121,8 +121,7 @@ class Container: # TODO: Add validation and proper error handling
         match registration:
             case _ if registration.type == Container.RegistrationType.INSTANCE and isinstance(registration.obj,
                                                                                               FromContainer):
-                self.__build_and_add_dependency(registration.obj.source_key)
-                return [registration.obj(self.__built)]
+                return self.__build_registration(registration.obj.source_key)
             case _ if registration.type == Container.RegistrationType.INSTANCE \
                       and not isinstance(registration.obj, FromContainer) \
                       and isfunction(registration.obj):
