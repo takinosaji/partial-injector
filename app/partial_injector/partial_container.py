@@ -26,12 +26,12 @@ class Container: # TODO: Add validation and proper error handling
     def register_instance(self,
                           instance: ContainerObject,
                           inject_returns: bool = False,
-                          register_items: bool = False,
+                          inject_items: bool = False,
                           key: Optional[ContainerKey] = None,
                           condition: Optional[Callable[[...], bool]] = None,
                           condition_args: Optional[list[ContainerObject]]=None,
                           condition_kwargs: Optional[dict[str, ContainerObject]]=None):
-        return self.__register(Container.RegistrationType.INSTANCE, instance, inject_returns, register_items, key, condition, condition_args, condition_kwargs)
+        return self.__register(Container.RegistrationType.INSTANCE, instance, inject_returns, inject_items, key, condition, condition_args, condition_kwargs)
 
     def register_factory(self,
                          factory: Callable,
@@ -48,7 +48,7 @@ class Container: # TODO: Add validation and proper error handling
                    registration_type: 'Container.RegistrationType',
                    registration_object: Callable,
                    inject_returns: bool = False,
-                   register_items: bool = False,
+                   inject_items: bool = False,
                    key: Optional[ContainerKey] = None,
                    condition: Optional[Callable[[...], bool]] = None,
                    condition_args: Optional[list[ContainerObject]]=None,
@@ -65,7 +65,7 @@ class Container: # TODO: Add validation and proper error handling
                                               factory_args=factory_args,
                                               factory_kwargs=factory_kwargs,
                                               inject_returns=inject_returns,
-                                              register_items=register_items,
+                                              inject_items=inject_items,
                                               condition=condition,
                                               condition_args=condition_args,
                                               condition_kwargs=condition_kwargs)
@@ -84,10 +84,10 @@ class Container: # TODO: Add validation and proper error handling
 
     def build(self) -> None:
         for key, registration in self.__registered.items():
-            self.__build_and_add_dependency(key)
+            self.__build_dependency(key)
         self.__is_built = True
 
-    def __build_and_add_dependency(self, registration_key: ContainerKey) -> None | ContainerKey: # TODO: Add circular dependency tracking
+    def __build_dependency(self, registration_key: ContainerKey) -> None | ContainerKey: # TODO: Add circular dependency tracking
         if registration_key not in self.__registered:
             raise TerminationException(f"The object with key {registration_key} is not registered")
 
@@ -121,7 +121,7 @@ class Container: # TODO: Add validation and proper error handling
         match registration:
             case _ if registration.type == Container.RegistrationType.INSTANCE and isinstance(registration.obj,
                                                                                               FromContainer):
-                self.__build_and_add_dependency(registration.obj.source_key)
+                self.__build_dependency(registration.obj.source_key)
                 return [registration.obj(self.__built)]
             case _ if registration.type == Container.RegistrationType.INSTANCE \
                       and not isinstance(registration.obj, FromContainer) \
@@ -130,7 +130,7 @@ class Container: # TODO: Add validation and proper error handling
                 return [partial_func]
             case _ if registration.type == Container.RegistrationType.INSTANCE \
                       and isinstance(registration.obj, list) \
-                      and registration.register_items:
+                      and registration.inject_items:
                 injected_list = []
                 for item in registration.obj:
                      injected_list.append(self.__build_registration(replace(registration, obj=item)))
@@ -171,7 +171,7 @@ class Container: # TODO: Add validation and proper error handling
         for item in obj:
             match item:
                 case _ if isinstance(item, FromContainer):
-                    self.__build_and_add_dependency(item.source_key)
+                    self.__build_dependency(item.source_key)
 
                     if isinstance(self.__built[item.source_key], list):
                         raise TerminationException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
@@ -185,7 +185,7 @@ class Container: # TODO: Add validation and proper error handling
         for key, item in obj.items():
             match item:
                 case _ if isinstance(item, FromContainer):
-                    self.__build_and_add_dependency(item.source_key)
+                    self.__build_dependency(item.source_key)
 
                     if isinstance(self.__built[item.source_key], list):
                         raise TerminationException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
@@ -216,7 +216,7 @@ class Container: # TODO: Add validation and proper error handling
                 if last_not_registered_param is not None:
                     raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}:{param.annotation}")
 
-                built_dep_key = self.__build_and_add_dependency(reg_dep_key)
+                built_dep_key = self.__build_dependency(reg_dep_key)
 
                 if built_dep_key is None:
                     raise TerminationException(f"Object with key {built_dep_key} was not built and cannot be resolved because built conditions have not been met.")
@@ -270,7 +270,7 @@ class Container: # TODO: Add validation and proper error handling
         factory_args: Optional[list[Any]] = None
         factory_kwargs: Optional[dict[str, Any]] = None
         inject_returns: bool = False
-        register_items: bool = False
+        inject_items: bool = False
         condition: Optional[Callable[[...], bool]] = None,
         condition_args: Optional[list[ContainerObject]] = None
         condition_kwargs: Optional[dict[str, Any]] = None

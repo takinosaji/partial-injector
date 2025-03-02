@@ -2,11 +2,17 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 2.2.2 - 2025-03-03
+
+_*Fixed*_
+
+- Broken build of FromContainer dependencies
+
 ## 2.2.0 - 2025-03-03
 
 _*Added*_
 
-- Ability to pass list to register_instance method with new argument `register_items=True`. 
+- Ability to pass list to register_instance method with new argument `inject_items=True`. 
   This will make container to register each list item separately and bound all of them to the provided key
   instead of registering whole list as a single instance.
 
