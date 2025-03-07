@@ -5,7 +5,7 @@ from functools import partial
 from inspect import isfunction
 from typing import Callable, Optional, Any, TypeVar, Generic, TypeAliasType
 
-from .error_handling import TerminationException
+from .error_handling import PartialContainerException
 
 type ContainerKey = str | type | TypeAliasType | Callable
 type ContainerObject = Any | FromContainer
@@ -28,10 +28,18 @@ class Container: # TODO: Add validation and proper error handling
                           inject_returns: bool = False,
                           inject_items: bool = False,
                           key: Optional[ContainerKey] = None,
-                          condition: Optional[Callable[[...], bool]] = None,
+                          condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                           condition_args: Optional[list[ContainerObject]]=None,
-                          condition_kwargs: Optional[dict[str, ContainerObject]]=None):
-        return self.__register(Container.RegistrationType.INSTANCE, instance, inject_returns, inject_items, key, condition, condition_args, condition_kwargs)
+                          condition_kwargs: Optional[dict[str, ContainerObject]]=None,
+                          condition_ignore_not_satisfied: bool = False):
+        return self.__register(Container.RegistrationType.INSTANCE,
+                               instance,
+                               inject_returns,
+                               inject_items,
+                               key, condition,
+                               condition_args,
+                               condition_kwargs,
+                               condition_ignore_not_satisfied)
 
     def register_factory(self,
                          factory: Callable,
@@ -39,10 +47,21 @@ class Container: # TODO: Add validation and proper error handling
                          kwargs: Optional[dict[str, ContainerObject]]=None,
                          inject_returns: bool = False,
                          key: Optional[ContainerKey] = None,
-                         condition: Optional[Callable[[...], bool]] = None,
+                         condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                          condition_args: Optional[list[ContainerObject]]=None,
-                         condition_kwargs: Optional[dict[str, ContainerObject]]=None):
-        return self.__register(Container.RegistrationType.FACTORY, factory, inject_returns, False, key, condition, condition_args, condition_kwargs, args, kwargs)
+                         condition_kwargs: Optional[dict[str, ContainerObject]]=None,
+                         condition_ignore_not_satisfied: bool = False):
+        return self.__register(Container.RegistrationType.FACTORY,
+                               factory,
+                               inject_returns,
+                               False,
+                               key,
+                               condition,
+                               condition_args,
+                               condition_kwargs,
+                               condition_ignore_not_satisfied,
+                               args,
+                               kwargs)
 
     def __register(self,
                    registration_type: 'Container.RegistrationType',
@@ -50,13 +69,14 @@ class Container: # TODO: Add validation and proper error handling
                    inject_returns: bool = False,
                    inject_items: bool = False,
                    key: Optional[ContainerKey] = None,
-                   condition: Optional[Callable[[...], bool]] = None,
+                   condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                    condition_args: Optional[list[ContainerObject]]=None,
                    condition_kwargs: Optional[dict[str, ContainerObject]]=None,
+                   condition_ignore_not_satisfied: bool = False,
                    factory_args: Optional[list[ContainerObject]]=None,
                    factory_kwargs: Optional[dict[str, ContainerObject]]=None):
         if self.__is_built:
-            raise TerminationException("Container already built")
+            raise PartialContainerException("Container already built")
 
         actual_key = key if key is not None else registration_object
 
@@ -68,7 +88,8 @@ class Container: # TODO: Add validation and proper error handling
                                               inject_items=inject_items,
                                               condition=condition,
                                               condition_args=condition_args,
-                                              condition_kwargs=condition_kwargs)
+                                              condition_kwargs=condition_kwargs,
+                                              condition_ignore_not_satisfied=condition_ignore_not_satisfied)
 
         if Container.RegistrationContainer[actual_key] in self.__registered and isinstance(self.__registered[Container.RegistrationContainer[actual_key]], Container.RegistrationContainer):
             self.__registered[Container.RegistrationContainer[actual_key]].append(registration)
@@ -87,12 +108,21 @@ class Container: # TODO: Add validation and proper error handling
             self.__build_dependency(key)
         self.__is_built = True
 
-    def __build_dependency(self, registration_key: ContainerKey) -> None | ContainerKey: # TODO: Add circular dependency tracking
+    def __build_dependency(self, registration_key: ContainerKey) -> None | tuple[ContainerKey | None, list[ContainerKey] | None]: # TODO: Add circular dependency tracking
         if registration_key not in self.__registered:
-            raise TerminationException(f"The object with key {registration_key} is not registered")
+            raise PartialContainerException(f"The object with key {registration_key} is not registered")
 
-        if registration_key in self.__built:
-            return registration_key
+        multiple_registrations = isinstance(self.__registered[registration_key], Container.RegistrationContainer)
+
+        if multiple_registrations:
+            already_built_item_key = registration_key.__args__[0] if registration_key.__args__[0] in self.__built else None
+            already_built_list_key = list[already_built_item_key] if list[already_built_item_key] in self.__built else None
+
+            if already_built_item_key or already_built_list_key:
+                return already_built_item_key, already_built_list_key
+        else:
+            if registration_key in self.__built:
+                return registration_key, None
 
         built_dependencies = []
         multiple_registrations = isinstance(self.__registered[registration_key], Container.RegistrationContainer)
@@ -104,18 +134,24 @@ class Container: # TODO: Add validation and proper error handling
                     continue
             built_dependencies.extend(self.__build_registration(registration))
 
-        if len(built_dependencies) == 0:
-            raise TerminationException(f"No objects with key {registration_key} were built because built conditions have not been met.")
-
-        built_key = list[registration_key.__args__[0]] if hasattr(registration_key, '__origin__') and registration_key.__origin__ == Container.RegistrationContainer \
-            else registration_key
+        if len(built_dependencies) == 0 and any(not r.condition_ignore_not_satisfied for r in registrations):
+            raise PartialContainerException(f"No objects with key {registration_key} were built because built conditions have not been met for any of the registrations.")
+        elif len(built_dependencies) == 0:
+            return None
 
         if multiple_registrations:
-            self.__built[built_key] = built_dependencies
-        else:
-            self.__built[built_key] = built_dependencies[0]
+            built_item_key = None
+            if len(built_dependencies) == 1:
+                built_item_key = registration_key.__args__[0]
+                self.__built[built_item_key] = built_dependencies[0]
 
-        return built_key
+            built_list_key = list[registration_key.__args__[0]]
+            self.__built[built_list_key] = built_dependencies
+
+            return built_item_key, built_list_key
+        else:
+            self.__built[registration_key] = built_dependencies[0]
+            return registration_key, None
 
     def __build_registration(self, registration: 'Container.Registration') -> list[BuiltDictValue]:
         match registration:
@@ -147,11 +183,11 @@ class Container: # TODO: Add validation and proper error handling
                         partial_func = self.__build_partial(registration.obj, registration.inject_returns)
                         return [partial_func]
                     case _ if isinstance(obj, FromContainer):
-                        raise TerminationException("Cannot build FromContainer object")
+                        raise PartialContainerException("Cannot build FromContainer object")
                     case _:
                         return [obj]
             case _:
-                raise TerminationException("Unknown registration type")
+                raise PartialContainerException("Unknown registration type")
 
     def __execute_with_injections(self, factory: Callable,
                                   args: Optional[list[ContainerObject]]=None,
@@ -174,7 +210,7 @@ class Container: # TODO: Add validation and proper error handling
                     self.__build_dependency(item.source_key)
 
                     if isinstance(self.__built[item.source_key], list):
-                        raise TerminationException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
+                        raise PartialContainerException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
                     unwrapped.append(self.__built[item.source_key])
                 case _:
                     unwrapped.append(item)
@@ -188,7 +224,7 @@ class Container: # TODO: Add validation and proper error handling
                     self.__build_dependency(item.source_key)
 
                     if isinstance(self.__built[item.source_key], list):
-                        raise TerminationException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
+                        raise PartialContainerException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
                     unwrapped[key] = self.__built[item.source_key]
                 case _:
                     unwrapped[key] = item
@@ -198,32 +234,42 @@ class Container: # TODO: Add validation and proper error handling
         sig = inspect.signature(func)
 
         if len(sig.parameters) == 0:
-            return self.__get_with_returns_injected(func) if inject_returns else func # вот тут еще и листы надо инжектить аутпута и тест написать на это
+            return self.__get_with_returns_injected(func) if inject_returns else func
 
         partial_args = []
 
-        last_not_registered_param = None
+        last_not_registered_name = None
+        last_not_registered_annotation = None
         for param_name, param in sig.parameters.items():
-            reg_container_type = Container.RegistrationContainer[param.annotation.__args__[0]] \
-                if (hasattr(param.annotation, '__origin__') and param.annotation.__origin__ is list) else None
+            param_is_list = hasattr(param.annotation, '__origin__') and param.annotation.__origin__ is list
+            reg_container_type = Container.RegistrationContainer[param.annotation.__args__[0]] if param.annotation and param_is_list \
+                else Container.RegistrationContainer[param.annotation] if param.annotation \
+                else None
 
             reg_dep_key = param_name if param_name in self.__registered \
                 else param.annotation if param.annotation in self.__registered \
                 else reg_container_type if reg_container_type in self.__registered \
                 else None
 
+            registered_multiple_times = reg_container_type == reg_dep_key
+
             if not reg_dep_key is None:
-                if last_not_registered_param is not None:
-                    raise TerminationException(f"Cannot build partial function without registered parameter {last_not_registered_param}:{param.annotation}")
+                if last_not_registered_name is not None:
+                    raise PartialContainerException(f"Cannot build partial function without registered parameter {last_not_registered_name}:{last_not_registered_annotation}")
 
-                built_dep_key = self.__build_dependency(reg_dep_key)
+                built_dep_keys = self.__build_dependency(reg_dep_key)
 
-                if built_dep_key is None:
-                    raise TerminationException(f"Object with key {built_dep_key} was not built and cannot be resolved because built conditions have not been met.")
-
-                partial_args.append(self.__built[built_dep_key])
+                if built_dep_keys is None:
+                    last_not_registered_name = param_name
+                    last_not_registered_annotation = param.annotation
+                else:
+                    if param_is_list and registered_multiple_times:
+                        partial_args.append(self.__built[built_dep_keys[1]])
+                    else:
+                        partial_args.append(self.__built[built_dep_keys[0]])
             else:
-                last_not_registered_param = param_name
+                last_not_registered_name = param_name
+                last_not_registered_annotation = param.annotation
 
         if len(partial_args) == 0:
             return self.__get_with_returns_injected(func) if inject_returns else func
@@ -249,13 +295,14 @@ class Container: # TODO: Add validation and proper error handling
 
     def resolve(self, key: ContainerKey):
         if not self.__is_built:
-            raise TerminationException("Container not built")
+            raise PartialContainerException("Container not built")
 
-        if not key in self.__registered and hasattr(key, '__args__') and Container.RegistrationContainer[key.__args__[0]] not in self.__registered:
-            raise TerminationException(f"Object with key {key} not registered")
+        if not key in self.__registered and hasattr(key, '__args__') \
+                and Container.RegistrationContainer[key.__args__[0]] not in self.__registered:
+            raise PartialContainerException(f"Object with key {key} not registered")
 
         if not key in self.__built and list[key] not in self.__built:
-            raise TerminationException(f"Object with key {key} not built")
+            raise PartialContainerException(f"Object with key {key} not built")
 
         return self.__built[key]
 
@@ -274,6 +321,7 @@ class Container: # TODO: Add validation and proper error handling
         condition: Optional[Callable[[...], bool]] = None,
         condition_args: Optional[list[ContainerObject]] = None
         condition_kwargs: Optional[dict[str, Any]] = None
+        condition_ignore_not_satisfied: bool = False
 
     T = TypeVar('T')
     class RegistrationContainer(Generic[T]):

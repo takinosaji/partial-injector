@@ -1,6 +1,6 @@
 import traceback
 
-class TerminationException(BaseException):
+class PartialContainerException(BaseException):
     def __init__(self, message):
         self.message = message
 

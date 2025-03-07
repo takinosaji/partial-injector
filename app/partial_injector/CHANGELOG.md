@@ -2,6 +2,13 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 2.3.4 - 2025-03-06
+
+_*Added*_
+
+- Ability to ignore the registrations, discarded by condition, during container build.
+- Registration of both list and single key for a single registration remained after condition checks
+
 ## 2.2.2 - 2025-03-03
 
 _*Fixed*_
