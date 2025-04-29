@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "spinq"
-version = "1.1.0"
-description = "Simple LINQ in Python"
+name = "sversion"
+version = "2.1.0"
+description = "Simple version management in Python"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
 readme = "README.md"
@@ -9,12 +9,11 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "spinq" }
+    { include = "sversion", from = ".." }
 ]
 
-include = [
-    "CHANGELOG.md"
-]
+exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]
+include = ["CHANGELOG.md"]
 
 classifiers = [
     'Programming Language :: Python :: 3',

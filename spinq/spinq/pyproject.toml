@@ -1,8 +1,7 @@
 [tool.poetry]
-package-mode = false
-name = "test-partial-injector-tests"
-version = "2.3.5"
-description = "partial-injector unit tests"
+name = "spinq"
+version = "1.1.0"
+description = "Simple LINQ in Python"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
 readme = "README.md"
@@ -10,8 +9,11 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "test_partial_injector" }
+    { include = "spinq", from = ".." }
 ]
+
+exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]
+include = ["CHANGELOG.md"]
 
 classifiers = [
     'Programming Language :: Python :: 3',
@@ -21,9 +23,6 @@ classifiers = [
 
 [tool.poetry.dependencies]
 python = "^3.13"
-pytest = "^8.3.5"
-pytest-asyncio = "^0.26.0"
-faker = "^37.1.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

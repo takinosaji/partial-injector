@@ -9,12 +9,11 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "partial_injector" }
+    { include = "partial_injector", from = ".." }
 ]
 
-include = [
-    "CHANGELOG.md"
-]
+exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]
+include = ["CHANGELOG.md"]
 
 classifiers = [
     'Programming Language :: Python :: 3',

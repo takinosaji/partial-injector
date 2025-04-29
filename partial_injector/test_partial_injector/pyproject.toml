@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "test-partial-injector-tests"
+version = "2.3.5"
+description = "partial-injector unit tests"
+authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/takinosaji/partial-injector"
+repository = "https://github.com/takinosaji/partial-injector"
+
+packages = [
+    { include = "test_partial_injector", from = ".." }
+]
+
+exclude = ["*.lock", "*.toml"]
+
+classifiers = [
+    'Programming Language :: Python :: 3',
+    'License :: OSI Approved :: MIT License',
+    'Operating System :: OS Independent'
+]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+pytest = "^8.3.5"
+pytest-asyncio = "^0.26.0"
+faker = "^37.1.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
