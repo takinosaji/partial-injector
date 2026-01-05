@@ -1,3 +1,8 @@
-from . import test_file_based
+__author__ = "kostiantyn.chomakov@gmail.com"
 
-__all__ = ['test_file_based']
+from . import test_version_file_based
+
+__all__ = [
+    'test_version_file_based',
+    'test_pyproject_toml_based'
+]

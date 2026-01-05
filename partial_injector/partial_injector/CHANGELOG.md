@@ -2,6 +2,28 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 3.1.0 - 2026-01-05
+
+_*Added*_
+
+- Ability new RegistrationType - TRANSIENT, which allows to register and object that will be evaluated and returned each time the dependency is requested.
+
+## 3.0.1 - 2026-01-05
+
+_*Changed*_
+
+- Existing public method names and signatures
+
+_*Added*_
+
+- Ability new RegistrationType - TRANSIENT_FACTORY, which allows to register a factory function that will be called each time the dependency is requested.
+
+## 2.3.6 - 2026-01-01
+
+_*Changed*_
+
+- Base exception class for package exceptions
+
 ## 2.3.5 - 2025-04-29
 
 _*Changed*_

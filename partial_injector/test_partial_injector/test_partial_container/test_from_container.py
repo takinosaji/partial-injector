@@ -23,8 +23,8 @@ def test_container_can_resolve_subsection():
         )
     )
     container = Container()
-    container.register_instance(configuration, key=Configuration)
-    container.register_instance(FromContainer(Configuration, lambda conf: conf.section), key=ConfigurationSection)
+    container.register_singleton(configuration, key=Configuration)
+    container.register_singleton(FromContainer(Configuration, lambda conf: conf.section), key=ConfigurationSection)
     container.build()
 
     configuration_section = container.resolve(ConfigurationSection)

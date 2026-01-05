@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "spinq"
-version = "1.1.0"
+version = "1.4.0"
 description = "Simple LINQ in Python"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,7 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "spinq", from = ".." }
+    { include = "spinq", from = "." }
 ]
 
 exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]
@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.14"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "partial-injector"
-version = "2.3.5"
+version = "3.1.0"
 description = "Dependency Injection for FP"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
@@ -22,7 +22,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.14"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

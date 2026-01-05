@@ -1,5 +1,8 @@
-from . import file_based, error_handling, contracts
+__author__ = "kostiantyn.chomakov@gmail.com"
 
-__all__ = ['file_based',
+from . import version_file_based, error_handling, contracts
+
+__all__ = ['version_file_based',
+           'pyproject_toml_based',
            'error_handling',
            'contracts']

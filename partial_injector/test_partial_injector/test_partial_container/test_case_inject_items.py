@@ -23,9 +23,9 @@ number_adder_factory: NumberAdderFactory = __number_adder_factory
 
 def test_container_can_inject_container_in_returns():
     container = Container()
-    container.register_instance(return_constant, key=ConstantReturner)
-    container.register_instance([return_one], key=list[NumberReturner], inject_items=True)
-    container.register_instance(number_adder_factory, key=NumberAdderFactory, inject_returns=True)
+    container.register_singleton(return_constant, key=ConstantReturner)
+    container.register_singleton([return_one], key=list[NumberReturner], inject_items=True)
+    container.register_singleton(number_adder_factory, key=NumberAdderFactory, inject_returns=True)
     container.build()
 
     factory = container.resolve(NumberAdderFactory)
@@ -35,8 +35,8 @@ def test_container_can_inject_container_in_returns():
 
 def test_container_can_inject_container():
     container = Container()
-    container.register_instance(return_constant, key=ConstantReturner)
-    container.register_instance([return_one], key=list[NumberReturner], inject_items=True)
+    container.register_singleton(return_constant, key=ConstantReturner)
+    container.register_singleton([return_one], key=list[NumberReturner], inject_items=True)
     container.build()
 
     number_returners = container.resolve(list[NumberReturner])

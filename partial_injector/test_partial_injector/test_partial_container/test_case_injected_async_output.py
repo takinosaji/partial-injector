@@ -16,9 +16,9 @@ async def __async_dependency(innermost_dependency_of_async: __innermost_dependen
 @pytest.mark.asyncio
 async def test_container_can_inject_dependencies_to_async_correctly():
     container = Container()
-    container.register_instance(__sync_dependency_that_returns_async, inject_returns=True)
-    container.register_instance(__async_dependency)
-    container.register_instance(__innermost_dependency_of_async)
+    container.register_singleton(__sync_dependency_that_returns_async, inject_returns=True)
+    container.register_singleton(__async_dependency)
+    container.register_singleton(__innermost_dependency_of_async)
     container.build()
 
     outermost_dependency = container.resolve(__sync_dependency_that_returns_async)

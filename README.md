@@ -15,6 +15,6 @@ Simple versioning for Python projects
 To build and publish packages in the repository to PyPi, use the following commands:
 
 ```powershell
-python setup.py sdist bdist_wheel
+python -m build or pyproject-build.exe . on Windows
 twine upload .\dist\*
 ```

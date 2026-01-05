@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sversion"
-version = "2.1.0"
+version = "2.2.0"
 description = "Simple version management in Python"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
@@ -22,7 +22,8 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.13"
+python = "^3.14"
+toml= "^0.10.2"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
