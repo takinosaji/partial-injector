@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "partial-injector"
-version = "3.1.0"
+version = "3.2.3"
 description = "Dependency Injection for FP"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,7 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "partial_injector", from = ".." }
+    { include = "partial_injector", from = "src" }
 ]
 
 exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]

@@ -9,7 +9,7 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "spinq", from = "." }
+    { include = "spinq", from = "src" }
 ]
 
 exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]

@@ -73,7 +73,7 @@ def test_transient_factory_works_the_same_when_resolved_directly_and_used_as_par
     assert number_container.value == 0
 
 
-def test_sigle_transient_factory_registration_with_failed_dependency_throws():
+def test_single_transient_factory_registration_with_failed_dependency_throws():
     # Arrange
     container = Container()
     container.register_transient_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
@@ -87,4 +87,3 @@ def test_sigle_transient_factory_registration_with_failed_dependency_throws():
         ),
     ):
         container.resolve(int)
-

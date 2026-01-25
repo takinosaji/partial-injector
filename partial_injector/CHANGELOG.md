@@ -2,7 +2,19 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
-## 3.1.0 - 2026-01-05
+## 3.2.3 - 2026-01-27
+
+_*Fixed*_
+
+- FromContainer selectors are now executed, when used in factories
+
+## 3.2.2 - 2026-01-07
+
+_*Changed*_
+
+- condition_ignore_not_satisfied parameter repurposed to throw_if_condition_not_satisfied_for_all
+
+## 3.1.3 - 2026-01-05
 
 _*Added*_
 

@@ -72,11 +72,11 @@ def test_container_can_resolve_all_with_same_key_correctly():
     assert multiple_number_adder(number_returners) == 26
 
 
-def test_container_throws_when_all_dependency_conditions_false():
+def test_container_throws_when_all_dependency_conditions_false_and_throw_set():
     # Arrange
     container = Container()
     container.register_singleton(return_constant, key=ConstantReturner)
-    container.register_singleton(return_one, key=NumberReturner, condition=lambda: False)
+    container.register_singleton(return_one, key=NumberReturner, condition=lambda: False, throw_if_condition_not_satisfied_for_all=True)
     container.register_singleton(return_two, key=NumberReturner, condition=lambda: False)
     container.register_singleton(return_three, key=NumberReturner, condition=lambda: False)
 
@@ -86,13 +86,13 @@ def test_container_throws_when_all_dependency_conditions_false():
         container.build()
 
 
-def test_container_doesnt_throw_when_all_dependency_conditions_false_and_ignored():
+def test_container_doesnt_throw_when_all_dependency_conditions_false_and_throw_not_set():
     # Arrange
     container = Container()
     container.register_singleton(return_constant, key=ConstantReturner)
-    container.register_singleton(return_one, key=NumberReturner, condition=lambda: False, condition_ignore_not_satisfied=True)
-    container.register_singleton(return_two, key=NumberReturner, condition=lambda: False, condition_ignore_not_satisfied=True)
-    container.register_singleton(return_three, key=NumberReturner, condition=lambda: False, condition_ignore_not_satisfied=True)
+    container.register_singleton(return_one, key=NumberReturner, condition=lambda: False)
+    container.register_singleton(return_two, key=NumberReturner, condition=lambda: False)
+    container.register_singleton(return_three, key=NumberReturner, condition=lambda: False)
 
     # Act
     container.build()
@@ -244,7 +244,7 @@ def test_multiple_transient_factory_registration_with_failed_dependency_throw():
     container = Container()
     container.register_transient_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
     container.register_transient_factory(lambda n: n, factory_args=[2], key=int, condition=lambda: False)
-    container.register_transient_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False)
+    container.register_transient_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False, throw_if_condition_not_satisfied_for_all=True)
     container.build()
 
     # Act / Assert
@@ -255,6 +255,18 @@ def test_multiple_transient_factory_registration_with_failed_dependency_throw():
         ),
     ):
         container.resolve(list[int])
+
+
+def test_multiple_transient_factory_registration_with_failed_dependency_doesnt_throw():
+    # Arrange
+    container = Container()
+    container.register_transient_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
+    container.register_transient_factory(lambda n: n, factory_args=[2], key=int, condition=lambda: False)
+    container.register_transient_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False)
+
+    # Act / Assert
+    container.build()
+    assert container.resolve(list[int]) == []
 
 
 def test_container_can_resolve_all_with_same_key_correctly_using_singleton_factories():
@@ -278,7 +290,7 @@ def test_multiple_singleton_factory_registration_with_failed_dependency_throw():
     container = Container()
     container.register_singleton_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
     container.register_singleton_factory(lambda n: n, factory_args=[2], key=int, condition=lambda: False)
-    container.register_singleton_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False)
+    container.register_singleton_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False, throw_if_condition_not_satisfied_for_all=True)
 
     # Act / Assert
     with pytest.raises(
@@ -288,3 +300,15 @@ def test_multiple_singleton_factory_registration_with_failed_dependency_throw():
         ),
     ):
         container.build()
+
+
+def test_multiple_singleton_factory_registration_with_failed_dependency_doesnt_throw():
+    # Arrange
+    container = Container()
+    container.register_singleton_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
+    container.register_singleton_factory(lambda n: n, factory_args=[2], key=int, condition=lambda: False)
+    container.register_singleton_factory(lambda n: n, factory_args=[3], key=int, condition=lambda: False)
+
+    # Act / Assert
+    container.build()
+    assert container.resolve(list[int]) == []

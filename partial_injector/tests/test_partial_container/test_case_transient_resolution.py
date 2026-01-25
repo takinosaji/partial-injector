@@ -1,6 +1,8 @@
+import re
 import pytest
 
-from partial_injector.partial_container import Container
+from partial_injector.error_handling import PartialContainerException
+from partial_injector.partial_container import Container, FromContainer
 
 
 class NumberContainer:
@@ -67,5 +69,30 @@ def test_transient_function_references_are_different():
     second_number_container_returner = container.resolve(number_container_returner)
 
     # Assert
-    assert  first_number_container_returner is not second_number_container_returner
+    assert first_number_container_returner is not second_number_container_returner
     assert first_number_container_returner() is second_number_container_returner()
+
+def test_transient_with_from_container_resolution():
+    # Arrange
+    container = Container()
+    container.register_singleton(42, key=int)
+    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str)
+    container.build()
+
+    # Act
+    result1 = container.resolve(str)
+
+    # Assert
+    assert result1 == "str: 43"
+
+def test_transient_throws_when_single_dependency_conditions_false_and_throw_not_set():
+    # Arrange
+    container = Container()
+    container.register_singleton(42, key=int)
+    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str, condition=lambda: False)
+    container.build()
+
+    # Act / Assert
+    with pytest.raises(PartialContainerException,
+                       match=re.escape("No objects with key <class 'str'> were built because built conditions have not been met for any of the registrations at the moment of resolution.")):
+        container.resolve(str)
