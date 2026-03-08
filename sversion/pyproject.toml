@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "sversion"
-version = "2.2.0"
+version = "2.2.1"
 description = "Simple version management in Python"
 authors = ["Kostiantyn Chomakov <kostiantyn.chomakov@gmail.com>"]
 license = "MIT"
@@ -9,7 +9,7 @@ homepage = "https://github.com/takinosaji/partial-injector"
 repository = "https://github.com/takinosaji/partial-injector"
 
 packages = [
-    { include = "sversion", from = ".." }
+    { include = "sversion", from = "src" }
 ]
 
 exclude = ["*.lock", "*.toml", "README.md", "LICENSE"]

@@ -2,7 +2,7 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
-## 2.2.0 - 2025-04-29
+## 2.2.1 - 2026-03-08
 
 _*Added*_
 
