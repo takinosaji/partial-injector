@@ -94,5 +94,17 @@ def test_transient_throws_when_single_dependency_conditions_false_and_throw_not_
 
     # Act / Assert
     with pytest.raises(PartialContainerException,
-                       match=re.escape("No objects with key <class 'str'> were built because built conditions have not been met for any of the registrations at the moment of resolution.")):
+                       match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
+        container.resolve(str)
+
+def test_transient_throws_when_single_dependency_conditions_false_and_throw_set():
+    # Arrange
+    container = Container()
+    container.register_transient(42, key=int)
+    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str, condition=lambda: False, throw_if_condition_not_satisfied=True)
+    container.build()
+
+    # Act / Assert
+    with pytest.raises(PartialContainerException,
+                       match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
         container.resolve(str)

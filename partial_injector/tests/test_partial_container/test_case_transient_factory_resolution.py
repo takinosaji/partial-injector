@@ -83,7 +83,7 @@ def test_single_transient_factory_registration_with_failed_dependency_throws():
     with pytest.raises(
         PartialContainerException,
         match=re.escape(
-            "No objects with key <class 'int'> were built because built conditions have not been met for any of the registrations at the moment of resolution."
+            "No object with key <class 'int'> was built because the built condition has not been met."
         ),
     ):
         container.resolve(int)

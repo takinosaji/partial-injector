@@ -2,6 +2,18 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 3.2.5 - 2026-03-16
+
+_*Changed*_
+
+- Removed extra copy instructions that caused objects with locks inside fail during resolution
+
+## 3.2.4 - 2026-03-10
+
+_*Changed*_
+
+- throw_if_condition_not_satisfied_for_all parameter repurposed to throw_if_condition_not_satisfied to work with single registration
+
 ## 3.2.3 - 2026-01-27
 
 _*Fixed*_

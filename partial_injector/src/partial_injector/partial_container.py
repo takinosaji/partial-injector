@@ -8,7 +8,8 @@ from inspect import isfunction
 from types import FunctionType
 from typing import Callable, Optional, Any, TypeVar, Generic, TypeAliasType
 
-from .error_handling import PartialContainerException
+from partial_injector.error_handling import PartialContainerException
+
 
 type ContainerKey = str | type | TypeAliasType | Callable
 type ContainerObject = Any | FromContainer
@@ -37,10 +38,6 @@ class Container: # TODO: Add validation and proper error handling
             self._first_registration = first_registration
             self._execute_with_injections = execute_with_injections
 
-        def __raise_no_objects_built_error(self, key: ContainerKey) -> None:
-            raise PartialContainerException(
-                f"No objects with key {key} were built because built conditions have not been met for any of the registrations at the moment of resolution.")
-
         @property
         def value(self) -> Any:
             match self._value:
@@ -49,11 +46,12 @@ class Container: # TODO: Add validation and proper error handling
                         not self._execute_with_injections(self._first_registration.condition,
                                                           self._first_registration.condition_args,
                                                           self._first_registration.condition_kwargs)):
-                        self.__raise_no_objects_built_error(self._first_registration.key)
+                        raise PartialContainerException(
+                            f"No object with key {self._first_registration.key} was built because the built condition has not been met.")
                     return self._value()
                 case _ if isinstance(self._value, list):
                     allowed_dependencies = []
-                    throw_if_condition_not_satisfied_for_all = False
+                    throw_if_condition_not_satisfied = False
 
                     for item in self._value:
                         if isinstance(item, Container.TransientContainer):
@@ -61,15 +59,16 @@ class Container: # TODO: Add validation and proper error handling
                                 not self._execute_with_injections(item.registration.condition,
                                                                   item.registration.condition_args,
                                                                   item.registration.condition_kwargs)):
-                                if item.registration.throw_if_condition_not_satisfied_for_all:
-                                    throw_if_condition_not_satisfied_for_all = True
+                                if item.registration.throw_if_condition_not_satisfied:
+                                    throw_if_condition_not_satisfied = True
                                 continue
                             allowed_dependencies.append(item())
                         else:
                             allowed_dependencies.append(item)
 
-                    if len(allowed_dependencies) == 0 and throw_if_condition_not_satisfied_for_all:
-                        self.__raise_no_objects_built_error(self._first_registration.key)
+                    if len(allowed_dependencies) == 0 and throw_if_condition_not_satisfied:
+                        raise PartialContainerException(
+                            f"No objects with key {self._first_registration.key} were built because built conditions have not been met for any of the registrations at the moment of resolution.")
 
                     return allowed_dependencies
                 case _:
@@ -103,7 +102,7 @@ class Container: # TODO: Add validation and proper error handling
                            condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                            condition_args: Optional[list[ContainerObject]]=None,
                            condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                           throw_if_condition_not_satisfied_for_all: bool = False):
+                           throw_if_condition_not_satisfied: bool = False):
         return self.__register(RegistrationType.SINGLETON,
                                instance,
                                key,
@@ -114,7 +113,7 @@ class Container: # TODO: Add validation and proper error handling
                                condition,
                                condition_args,
                                condition_kwargs,
-                               throw_if_condition_not_satisfied_for_all)
+                               throw_if_condition_not_satisfied)
 
     def register_transient(self,
                            instance: ContainerObject,
@@ -124,7 +123,7 @@ class Container: # TODO: Add validation and proper error handling
                            condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                            condition_args: Optional[list[ContainerObject]]=None,
                            condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                           throw_if_condition_not_satisfied_for_all: bool = False):
+                           throw_if_condition_not_satisfied: bool = False):
         return self.__register(RegistrationType.TRANSIENT,
                                instance,
                                key,
@@ -135,7 +134,7 @@ class Container: # TODO: Add validation and proper error handling
                                condition,
                                condition_args,
                                condition_kwargs,
-                               throw_if_condition_not_satisfied_for_all)
+                               throw_if_condition_not_satisfied)
 
 
     def register_singleton_factory(self,
@@ -147,7 +146,7 @@ class Container: # TODO: Add validation and proper error handling
                                    condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                                    condition_args: Optional[list[ContainerObject]]=None,
                                    condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   throw_if_condition_not_satisfied_for_all: bool = False):
+                                   throw_if_condition_not_satisfied: bool = False):
         return self.__register(RegistrationType.SINGLETON_FACTORY,
                                factory,
                                key,
@@ -158,7 +157,7 @@ class Container: # TODO: Add validation and proper error handling
                                condition,
                                condition_args,
                                condition_kwargs,
-                               throw_if_condition_not_satisfied_for_all)
+                               throw_if_condition_not_satisfied)
 
     def register_transient_factory(self,
                                    factory: Callable,
@@ -169,7 +168,7 @@ class Container: # TODO: Add validation and proper error handling
                                    condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                                    condition_args: Optional[list[ContainerObject]]=None,
                                    condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   throw_if_condition_not_satisfied_for_all: bool = False):
+                                   throw_if_condition_not_satisfied: bool = False):
         return self.__register(RegistrationType.TRANSIENT_FACTORY,
                                factory,
                                key,
@@ -180,7 +179,7 @@ class Container: # TODO: Add validation and proper error handling
                                condition,
                                condition_args,
                                condition_kwargs,
-                               throw_if_condition_not_satisfied_for_all)
+                               throw_if_condition_not_satisfied)
 
     def __register(self,
                    registration_type: 'RegistrationType',
@@ -193,7 +192,7 @@ class Container: # TODO: Add validation and proper error handling
                    condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
                    condition_args: Optional[list[ContainerObject]]=None,
                    condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                   throw_if_condition_not_satisfied_for_all: bool = False):
+                   throw_if_condition_not_satisfied: bool = False):
         if self.__is_built:
             raise PartialContainerException("Container already built")
 
@@ -209,7 +208,7 @@ class Container: # TODO: Add validation and proper error handling
                                               condition=condition,
                                               condition_args=condition_args,
                                               condition_kwargs=condition_kwargs,
-                                              throw_if_condition_not_satisfied_for_all=throw_if_condition_not_satisfied_for_all)
+                                              throw_if_condition_not_satisfied=throw_if_condition_not_satisfied)
         if Container.ListOfDependencies[actual_key] in self._registered and isinstance(self._registered[Container.ListOfDependencies[actual_key]], Container.ListOfDependencies):
             self._registered[Container.ListOfDependencies[actual_key]].append(registration)
         elif actual_key in self._registered:
@@ -257,8 +256,14 @@ class Container: # TODO: Add validation and proper error handling
             built_dependencies.extend(self.__build_registration(registration))
 
         if len(built_dependencies) == 0:
-            if not multiple_registrations or any(r.throw_if_condition_not_satisfied_for_all for r in registrations):
-                raise PartialContainerException(f"No objects with key {registration_key} were built because built conditions have not been met for any of the registrations.")
+            if multiple_registrations:
+                if any(r.throw_if_condition_not_satisfied for r in registrations):
+                    raise PartialContainerException(f"No objects with key {registration_key} were built because built conditions have not been met for any of the registrations.")
+            else:
+                if registrations[0].throw_if_condition_not_satisfied:
+                    raise PartialContainerException(f"No object with key {registration_key} was built because the built condition has not been met.")
+                else:
+                    return None
 
         if multiple_registrations:
             built_item_key = None
@@ -517,7 +522,7 @@ class Container: # TODO: Add validation and proper error handling
         condition: Optional[Callable[[...], bool]] = None,
         condition_args: Optional[list[ContainerObject]] = None
         condition_kwargs: Optional[dict[str, Any]] = None
-        throw_if_condition_not_satisfied_for_all: bool = False
+        throw_if_condition_not_satisfied: bool = False
 
     T = TypeVar('T')
     class ListOfDependencies(Generic[T]):

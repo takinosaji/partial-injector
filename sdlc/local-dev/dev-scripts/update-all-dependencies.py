@@ -3,6 +3,14 @@ import glob
 import subprocess
 import argparse
 
+def has_dependency_group(pyproject_file: str, group_name: str) -> bool:
+    """Check if a specific dependency group exists in pyproject.toml."""
+    try:
+        with open(pyproject_file, "r") as f:
+            return f"[tool.poetry.group.{group_name}.dependencies]" in f.read()
+    except FileNotFoundError:
+        return False
+
 def find_nested_toml_files(project_dir: str, recursive: bool = False):
     """Find pyproject.toml files.
 
@@ -17,7 +25,7 @@ def find_nested_toml_files(project_dir: str, recursive: bool = False):
         toml_file = os.path.join(project_dir, "pyproject.toml")
         return [toml_file] if os.path.exists(toml_file) else []
 
-def update_packages(toml_files):
+def update_packages(toml_files, include_groups=None):
     """Run `poetry update` for each pyproject.toml file."""
     original_cwd = os.getcwd()
     for toml_file in toml_files:
@@ -25,7 +33,14 @@ def update_packages(toml_files):
         try:
             print(f"Updating packages for {project_path}...")
             os.chdir(project_path)
-            subprocess.check_call(["poetry", "update"])
+
+            command = ["poetry", "update"]
+            if include_groups:
+                for group in include_groups:
+                    if has_dependency_group(toml_file, group):
+                        command.extend(["--with", group])
+
+            subprocess.check_call(command)
             print(f"Successfully updated packages for {project_path}.")
         except subprocess.CalledProcessError as e:
             print(f"Failed to update packages for {project_path}. Error: {e}")
@@ -47,6 +62,14 @@ if __name__ == "__main__":
         help="Path to the directory containing Poetry projects.",
     )
     parser.add_argument(
+        "--include-groups",
+        nargs="*",
+        help=(
+            "Dependency groups to include (updated via 'poetry update --with <group>'). "
+            "Only groups that exist in a given project are passed through."
+        ),
+    )
+    parser.add_argument(
         "--recursive",
         action="store_true",
         help=(
@@ -61,4 +84,4 @@ if __name__ == "__main__":
     if not toml_files:
         print(f"No pyproject.toml files found in {args.project_dir} (recursive={args.recursive}).")
     else:
-        update_packages(toml_files)
+        update_packages(toml_files, include_groups=args.include_groups)

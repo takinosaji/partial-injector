@@ -17,6 +17,7 @@ def install_poetry_projects(
     no_root: bool = False,
     without: Optional[List[str]] = None,
     all_groups: bool = False,
+    include_groups: Optional[List[str]] = None,
     recursive: bool = False,
 ) -> None:
     """Find and install Poetry projects in the specified directory.
@@ -24,6 +25,9 @@ def install_poetry_projects(
     If ``recursive`` is False, only a ``pyproject.toml`` directly inside
     ``project_dir`` is considered. If True, all matching files in
     subdirectories are processed as well.
+
+    If ``include_groups`` is provided, matching dependency groups are installed
+    via Poetry's ``--with`` flags (only if the group exists in that project).
     """
     original_cwd = os.getcwd()
 
@@ -45,11 +49,18 @@ def install_poetry_projects(
             command_flags: List[str] = []
             if no_root:
                 command_flags.append("--no-root")
+
+            if include_groups:
+                for group in include_groups:
+                    if has_dependency_group(pyproject, group):
+                        command_flags.extend(["--with", group])
+
             if without:
                 for group in without:
                     if has_dependency_group(pyproject, group):
                         command_flags.extend(["--without", group])
-            if all_groups and not without:
+
+            if all_groups and not without and not include_groups:
                 command_flags.append("--all-groups")
 
             try:
@@ -95,6 +106,14 @@ if __name__ == "__main__":
         help="Include the --all-groups option during installation.",
     )
     parser.add_argument(
+        "--include-groups",
+        nargs="*",
+        help=(
+            "Dependency groups to include (installed via 'poetry install --with <group>'). "
+            "Only groups that exist in a given project are passed through."
+        ),
+    )
+    parser.add_argument(
         "--recursive",
         action="store_true",
         help=(
@@ -110,5 +129,6 @@ if __name__ == "__main__":
         args.no_root,
         args.without,
         args.all_groups,
+        args.include_groups,
         args.recursive,
     )
