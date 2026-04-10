@@ -1,22 +1,63 @@
-# partial-injector
+# Python FP Utilities
 
-Dependency Injection for Functional Programming in Python
+A UV workspace containing three small Python libraries for functional-programming-style code.
 
-# spinq
+Requires Python 3.14+.
 
-Simple LINQ in Python
+## Packages
 
-# sversion
+### [partial-injector](src/partial-injector/README.md)
 
-Simple versioning for Python projects
+Dependency injection container built around `functools.partial`. Register plain functions and instances, then let the container wire their dependencies and hand back ready-to-call partials.
+
+```bash
+pip install partial-injector
+```
+
+### spinq
+
+LINQ-style collection helpers for Python lists (`first_`, `where_`, `select_`, `order_by_`, etc.).
+
+```bash
+pip install spinq
+```
+
+### sversion
+
+Simple version retrieval for Python projects — reads the current version from a `pyproject.toml` or a dedicated version file.
+
+```bash
+pip install sversion
+```
+
+## Development
+
+This repo uses [UV](https://docs.astral.sh/uv/) workspaces.
+
+```bash
+# install all workspace dependencies
+uv sync
+
+# run tests
+uv run pytest
+
+# lint
+uv run ruff check .
+```
 
 ## Build and Publish
 
-To build and publish packages in the repository to PyPi, use the following commands:
+Build and upload a package from its directory:
+
+```bash
+cd src/<package>
+uv build
+uv publish
+```
+
+or 
 
 ```powershell
 python -m build (or pyproject-build.exe . on Windows)
 twine upload .\dist\*
 ```
-
-Remember to ensure up-to-date poetry lock files before building and publishing packages. You can do it by running `poetry lock` command in each package directory.
