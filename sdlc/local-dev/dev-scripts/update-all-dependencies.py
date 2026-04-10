@@ -1,87 +1,83 @@
-import os
-import glob
-import subprocess
 import argparse
+import glob
+import logging
+import os
+import subprocess
+import sys
 
-def has_dependency_group(pyproject_file: str, group_name: str) -> bool:
-    """Check if a specific dependency group exists in pyproject.toml."""
-    try:
-        with open(pyproject_file, "r") as f:
-            return f"[tool.poetry.group.{group_name}.dependencies]" in f.read()
-    except FileNotFoundError:
-        return False
+logger = logging.getLogger(__name__)
 
-def find_nested_toml_files(project_dir: str, recursive: bool = False):
-    """Find pyproject.toml files.
 
-    If ``recursive`` is False, only ``pyproject.toml`` directly inside
-    ``project_dir`` is returned. If True, all nested files are returned,
-    sorted by nesting level (deepest first).
+def find_pyproject_files(project_dir: str, recursive: bool = False) -> list[str]:
+    """Find pyproject.toml files under project_dir.
+
+    If recursive is False, only the pyproject.toml directly in project_dir
+    is returned. If True, all nested files are returned sorted deepest-first
+    so inner packages are upgraded before outer ones.
     """
     if recursive:
-        toml_files = glob.glob(os.path.join(project_dir, "**", "pyproject.toml"), recursive=True)
-        return sorted(toml_files, key=lambda x: x.count(os.sep), reverse=True)
+        files = glob.glob(
+            os.path.join(project_dir, "**", "pyproject.toml"), recursive=True
+        )
+        return sorted(files, key=lambda x: x.count(os.sep), reverse=True)
     else:
-        toml_file = os.path.join(project_dir, "pyproject.toml")
-        return [toml_file] if os.path.exists(toml_file) else []
+        path = os.path.join(project_dir, "pyproject.toml")
+        return [path] if os.path.exists(path) else []
 
-def update_packages(toml_files, include_groups=None):
-    """Run `poetry update` for each pyproject.toml file."""
-    original_cwd = os.getcwd()
-    for toml_file in toml_files:
-        project_path = os.path.dirname(toml_file)
-        try:
-            print(f"Updating packages for {project_path}...")
-            os.chdir(project_path)
 
-            command = ["poetry", "update"]
-            if include_groups:
-                for group in include_groups:
-                    if has_dependency_group(toml_file, group):
-                        command.extend(["--with", group])
+def upgrade_project(project_path: str) -> None:
+    """Run uv lock --upgrade and uv sync in the given project directory."""
+    logger.info("Upgrading dependencies for %s...", project_path)
+    try:
+        subprocess.check_call(["uv", "lock", "--upgrade"], cwd=project_path)
+        subprocess.check_call(["uv", "sync", "--all-groups"], cwd=project_path)
+        logger.info("Successfully upgraded dependencies for %s.", project_path)
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            "Failed to upgrade dependencies for %s. Error: %s", project_path, e
+        )
+        raise
 
-            subprocess.check_call(command)
-            print(f"Successfully updated packages for {project_path}.")
-        except subprocess.CalledProcessError as e:
-            print(f"Failed to update packages for {project_path}. Error: {e}")
-            raise e
-        finally:
-            os.chdir(original_cwd)
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Update packages for Poetry projects inside a directory. "
-            "By default only the pyproject.toml directly in project_dir is used; "
-            "use --recursive to also process subdirectories."
+            "Upgrade dependencies to their latest allowed versions. "
+            "Without --recursive, only the pyproject.toml directly in project_dir "
+            "is processed. With --recursive, all nested pyproject.toml files are "
+            "processed deepest-first."
         )
     )
     parser.add_argument(
-        "project_dir",
+        "project_dirs",
         type=str,
-        help="Path to the directory containing Poetry projects.",
-    )
-    parser.add_argument(
-        "--include-groups",
-        nargs="*",
-        help=(
-            "Dependency groups to include (updated via 'poetry update --with <group>'). "
-            "Only groups that exist in a given project are passed through."
-        ),
+        nargs="+",
+        metavar="project_dir",
+        help="One or more directories containing pyproject.toml files.",
     )
     parser.add_argument(
         "--recursive",
         action="store_true",
-        help=(
-            "Search for pyproject.toml files recursively under project_dir. "
-            "If omitted, only the top-level pyproject.toml in project_dir is used."
-        ),
+        help="Find and process all pyproject.toml files recursively.",
     )
-
     args = parser.parse_args()
 
-    toml_files = find_nested_toml_files(args.project_dir, recursive=args.recursive)
-    if not toml_files:
-        print(f"No pyproject.toml files found in {args.project_dir} (recursive={args.recursive}).")
-    else:
-        update_packages(toml_files, include_groups=args.include_groups)
+    files = []
+    for project_dir in args.project_dirs:
+        found = find_pyproject_files(project_dir, recursive=args.recursive)
+        if not found:
+            logger.info("No pyproject.toml files found in %s.", project_dir)
+            sys.exit(1)
+        files.extend(found)
+
+    for pyproject in files:
+        project_path = os.path.dirname(pyproject)
+        try:
+            upgrade_project(project_path)
+        except subprocess.CalledProcessError:
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    main()

@@ -1,134 +1,148 @@
-import os
-import glob
-import subprocess
 import argparse
-from typing import List, Optional
+import glob
+import logging
+import os
+import subprocess
+import sys
 
-def has_dependency_group(pyproject_file: str, group_name: str) -> bool:
-    """Check if a specific dependency group exists in pyproject.toml."""
-    try:
-        with open(pyproject_file, "r") as f:
-            return f"[tool.poetry.group.{group_name}.dependencies]" in f.read()
-    except FileNotFoundError:
-        return False
+logger = logging.getLogger(__name__)
 
-def install_poetry_projects(
-    project_dir: str,
-    no_root: bool = False,
-    without: Optional[List[str]] = None,
-    all_groups: bool = False,
-    include_groups: Optional[List[str]] = None,
-    recursive: bool = False,
-) -> None:
-    """Find and install Poetry projects in the specified directory.
 
-    If ``recursive`` is False, only a ``pyproject.toml`` directly inside
-    ``project_dir`` is considered. If True, all matching files in
-    subdirectories are processed as well.
+def find_pyproject_files(project_dir: str, recursive: bool = False) -> list[str]:
+    """Find pyproject.toml files under project_dir.
 
-    If ``include_groups`` is provided, matching dependency groups are installed
-    via Poetry's ``--with`` flags (only if the group exists in that project).
+    If recursive is False, only the pyproject.toml directly in project_dir
+    is returned. If True, all nested files are returned sorted shallowest-first
+    so outer workspace members are installed before inner ones.
     """
-    original_cwd = os.getcwd()
-
     if recursive:
-        pattern = os.path.join(project_dir, "**", "pyproject.toml")
+        files = glob.glob(
+            os.path.join(project_dir, "**", "pyproject.toml"), recursive=True
+        )
+        return sorted(files, key=lambda x: x.count(os.sep))
     else:
-        pattern = os.path.join(project_dir, "pyproject.toml")
+        path = os.path.join(project_dir, "pyproject.toml")
+        return [path] if os.path.exists(path) else []
 
-    pyproject_files = sorted(glob.glob(pattern, recursive=recursive))
 
-    if not pyproject_files:
-        print(f"No pyproject.toml files found in {project_dir} (recursive={recursive}).")
-        return
+def sync_project(
+    project_path: str,
+    all_groups: bool = False,
+    no_dev: bool = False,
+    without: list[str] | None = None,
+    only_group: list[str] | None = None,
+    all_extras: bool = False,
+    extras: list[str] | None = None,
+) -> None:
+    """Run uv sync in the given project directory."""
+    command = ["uv", "sync"]
+    if all_groups:
+        command.append("--all-groups")
+    if no_dev:
+        command.append("--no-dev")
+    if without:
+        for group in without:
+            command += ["--no-group", group]
+    if only_group:
+        for group in only_group:
+            command += ["--group", group]
+    if all_extras:
+        command.append("--all-extras")
+    elif extras:
+        for extra in extras:
+            command += ["--extra", extra]
 
+    logger.info("Installing dependencies for %s...", project_path)
     try:
-        for pyproject in pyproject_files:
-            project_path = os.path.dirname(pyproject)
-
-            command_flags: List[str] = []
-            if no_root:
-                command_flags.append("--no-root")
-
-            if include_groups:
-                for group in include_groups:
-                    if has_dependency_group(pyproject, group):
-                        command_flags.extend(["--with", group])
-
-            if without:
-                for group in without:
-                    if has_dependency_group(pyproject, group):
-                        command_flags.extend(["--without", group])
-
-            if all_groups and not without and not include_groups:
-                command_flags.append("--all-groups")
-
-            try:
-                print(f"Installing dependencies for {project_path}...")
-                os.chdir(project_path)
-                subprocess.check_call(["poetry", "install"] + command_flags)
-                print(f"Successfully installed dependencies for {project_path}.")
-            except subprocess.CalledProcessError as e:
-                print(f"Failed to install dependencies for {project_path}. Error: {e}")
-                raise e
-            finally:
-                os.chdir(original_cwd)
-    finally:
-        os.chdir(original_cwd)
+        subprocess.check_call(command, cwd=project_path)
+        logger.info("Successfully installed dependencies for %s.", project_path)
+    except subprocess.CalledProcessError as e:
+        logger.error(
+            "Failed to install dependencies for %s. Error: %s", project_path, e
+        )
+        raise
 
 
-if __name__ == "__main__":
+def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Install Poetry dependencies for projects inside a directory. "
-            "By default only the pyproject.toml directly in project_dir is used; "
-            "use --recursive to also process subdirectories."
+            "Run 'uv sync' for pyproject.toml files found under project_dir. "
+            "Without --recursive, only the pyproject.toml directly in project_dir "
+            "is processed. With --recursive, all nested pyproject.toml files are "
+            "processed shallowest-first."
         )
     )
     parser.add_argument(
-        "project_dir",
+        "project_dirs",
         type=str,
-        help="Path to the directory containing Poetry projects.",
-    )
-    parser.add_argument(
-        "--no-root",
-        action="store_true",
-        help="Include the --no-root option during installation.",
-    )
-    parser.add_argument(
-        "--without",
-        nargs="*",
-        help="Dependency groups to exclude if they exist.",
-    )
-    parser.add_argument(
-        "--all-groups",
-        action="store_true",
-        help="Include the --all-groups option during installation.",
-    )
-    parser.add_argument(
-        "--include-groups",
-        nargs="*",
-        help=(
-            "Dependency groups to include (installed via 'poetry install --with <group>'). "
-            "Only groups that exist in a given project are passed through."
-        ),
+        nargs="+",
+        metavar="project_dir",
+        help="One or more directories containing pyproject.toml files.",
     )
     parser.add_argument(
         "--recursive",
         action="store_true",
-        help=(
-            "Search for pyproject.toml files recursively under project_dir. "
-            "If omitted, only the top-level pyproject.toml in project_dir is used."
-        ),
+        help="Find and process all pyproject.toml files recursively.",
     )
-
+    parser.add_argument(
+        "--all-groups",
+        action="store_true",
+        help="Include all dependency groups.",
+    )
+    parser.add_argument(
+        "--no-dev",
+        action="store_true",
+        help="Exclude the default dev dependency group.",
+    )
+    parser.add_argument(
+        "--without",
+        nargs="+",
+        metavar="GROUP",
+        help="Exclude specific dependency groups.",
+    )
+    parser.add_argument(
+        "--only-group",
+        nargs="+",
+        metavar="GROUP",
+        help="Include only the specified dependency groups.",
+    )
+    parser.add_argument(
+        "--all-extras",
+        action="store_true",
+        help="Include all optional extras.",
+    )
+    parser.add_argument(
+        "--extra",
+        nargs="+",
+        metavar="EXTRA",
+        help="Include specific optional extras (e.g. --extra llm-all monitoring).",
+    )
     args = parser.parse_args()
 
-    install_poetry_projects(
-        args.project_dir,
-        args.no_root,
-        args.without,
-        args.all_groups,
-        args.include_groups,
-        args.recursive,
-    )
+    files = []
+    for project_dir in args.project_dirs:
+        found = find_pyproject_files(project_dir, recursive=args.recursive)
+        if not found:
+            logger.info("No pyproject.toml files found in %s.", project_dir)
+            sys.exit(1)
+        files.extend(found)
+
+    for pyproject in files:
+        project_path = os.path.dirname(pyproject)
+        try:
+            sync_project(
+                project_path,
+                all_groups=args.all_groups,
+                no_dev=args.no_dev,
+                without=args.without,
+                only_group=args.only_group,
+                all_extras=args.all_extras,
+                extras=args.extra,
+            )
+        except subprocess.CalledProcessError:
+            sys.exit(1)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    main()
