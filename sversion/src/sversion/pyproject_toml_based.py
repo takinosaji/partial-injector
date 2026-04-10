@@ -18,6 +18,8 @@ def __get_version(start_search_path: str, project_file_name: str = "pyproject.to
             if os.path.exists(project_file_path):
                 with open(project_file_path, 'r') as project_file:
                     project_data = toml.load(project_file)
+                    if "project" in project_data and "version" in project_data["project"]:
+                        return project_data["project"]["version"]
                     if "tool" in project_data and "poetry" in project_data["tool"]:
                         return project_data["tool"]["poetry"]["version"]
 

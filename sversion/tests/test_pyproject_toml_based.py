@@ -19,6 +19,25 @@ def mock_open_pyproject_toml():
         yield mock_file
 
 @pytest.fixture
+def mock_open_uv_project_file():
+    uv_toml_content = """
+    [project]
+    name = "my-package"
+    version = "3.1.4"
+    """
+    with patch('builtins.open', mock_open(read_data=uv_toml_content)) as mock_file:
+        yield mock_file
+
+@pytest.fixture
+def mock_open_no_version_section():
+    no_version_toml_content = """
+    [build-system]
+    requires = ["setuptools"]
+    """
+    with patch('builtins.open', mock_open(read_data=no_version_toml_content)) as mock_file:
+        yield mock_file
+
+@pytest.fixture
 def mock_open_custom_project_file():
     custom_toml_content = """
     [tool.poetry]
@@ -54,3 +73,24 @@ def test_get_version_with_custom_project_file_not_found(mock_os_path_exists):
     mock_os_path_exists.return_value = False
     with pytest.raises(VersionNotFoundException):
         get_version(os.path.abspath(os.path.dirname(__file__)), project_file_name="custom_project.toml")
+
+def test_get_version_found_in_project_section(mock_os_path_exists, mock_open_uv_project_file):
+    mock_os_path_exists.side_effect = lambda path: path.endswith('pyproject.toml')
+    assert get_version(os.path.abspath(os.path.dirname(__file__))) == "3.1.4"
+
+def test_get_version_project_section_takes_precedence_over_poetry(mock_os_path_exists):
+    toml_content = """
+    [project]
+    version = "4.0.0"
+
+    [tool.poetry]
+    version = "1.0.0"
+    """
+    with patch('builtins.open', mock_open(read_data=toml_content)):
+        mock_os_path_exists.side_effect = lambda path: path.endswith('pyproject.toml')
+        assert get_version(os.path.abspath(os.path.dirname(__file__))) == "4.0.0"
+
+def test_get_version_not_found_when_no_known_section(mock_os_path_exists, mock_open_no_version_section):
+    mock_os_path_exists.side_effect = lambda path: path.endswith('pyproject.toml')
+    with pytest.raises(VersionNotFoundException):
+        get_version(os.path.abspath(os.path.dirname(__file__)))

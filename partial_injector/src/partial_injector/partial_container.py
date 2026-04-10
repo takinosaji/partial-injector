@@ -136,7 +136,6 @@ class Container: # TODO: Add validation and proper error handling
                                condition_kwargs,
                                throw_if_condition_not_satisfied)
 
-
     def register_singleton_factory(self,
                                    factory: Callable,
                                    key: Optional[ContainerKey] = None,
@@ -253,7 +252,7 @@ class Container: # TODO: Add validation and proper error handling
             if registration.condition is not None and registration.type not in [RegistrationType.TRANSIENT_FACTORY, RegistrationType.TRANSIENT]:
                 if not self.__execute_with_injections(registration.condition, registration.condition_args, registration.condition_kwargs):
                     continue
-            built_dependencies.extend(self.__build_registration(registration))
+            built_dependencies.append(self.__build_registration(registration))
 
         if len(built_dependencies) == 0:
             if multiple_registrations:
@@ -284,21 +283,21 @@ class Container: # TODO: Add validation and proper error handling
             case _ if registration.type == RegistrationType.SINGLETON and isinstance(registration.obj,
                                                                                      FromContainer):
                 self.__build_dependency(registration.obj.source_key)
-                return [registration.obj(self.__built)]
+                return registration.obj(self.__built)
             case _ if registration.type == RegistrationType.TRANSIENT and isinstance(registration.obj,
                                                                                      FromContainer):
                 transient_container = Container.TransientContainer(self.__execute_transient_from_container, registration)
-                return [transient_container]
+                return transient_container
             case _ if registration.type == RegistrationType.SINGLETON \
                       and not isinstance(registration.obj, FromContainer) \
                       and isfunction(registration.obj):
                 partial_func = self.__build_partial(registration.obj, registration.inject_returns)
-                return [partial_func]
+                return partial_func
             case _ if registration.type == RegistrationType.TRANSIENT \
                       and not isinstance(registration.obj, FromContainer) \
                       and isfunction(registration.obj):
                 transient_container = Container.TransientContainer(self.__execute_transient_function, registration)
-                return [transient_container]
+                return transient_container
             case _ if registration.type == RegistrationType.SINGLETON \
                       and isinstance(registration.obj, list) \
                       and registration.inject_items:
@@ -310,21 +309,21 @@ class Container: # TODO: Add validation and proper error handling
                       and isinstance(registration.obj, list) \
                       and registration.inject_items:
                 transient_container = Container.TransientContainer(self.__execute_transient_list_items, registration)
-                return [transient_container]
+                return transient_container
             case _ if registration.type == RegistrationType.SINGLETON \
                       and not isinstance(registration.obj, FromContainer) \
                       and not isfunction(registration.obj):
-                return [registration.obj]
+                return registration.obj
             case _ if (registration.type == RegistrationType.TRANSIENT
                        and not isinstance(registration.obj, FromContainer)
                        and not isfunction(registration.obj)):
                 transient_container = Container.TransientContainer(self.__execute_transient_instance, registration)
-                return [transient_container]
+                return transient_container
             case _ if registration.type == RegistrationType.SINGLETON_FACTORY:
-                return [self.__execute_singleton_factory(registration)]
+                return self.__execute_singleton_factory(registration)
             case _ if registration.type == RegistrationType.TRANSIENT_FACTORY:
                 transient_container = Container.TransientContainer(self.__execute_transient_factory, registration)
-                return [transient_container]
+                return transient_container
             case _:
                 raise PartialContainerException("Unsupported registration type and configuration")
 
@@ -342,7 +341,7 @@ class Container: # TODO: Add validation and proper error handling
         return injected_list
 
     def __execute_transient_instance(self, registration: 'Container.Registration') -> Any:
-                return self.__copy(registration.obj)
+        return self.__copy(registration.obj)
 
     def __execute_transient_from_container(self, registration: 'Container.Registration') -> Any:
         self.__build_dependency(registration.obj.source_key)
@@ -356,17 +355,17 @@ class Container: # TODO: Add validation and proper error handling
         obj = self.__execute_with_injections(registration.obj,
                                              registration.factory_args,
                                              registration.factory_kwargs)
-        return self.__execute_factory(self.__copy(obj), registration.inject_returns)
+        return self.__execute_factory(obj, registration.inject_returns)
 
     def __execute_factory(self, obj, inject_returns):
         match obj:
             case _ if isfunction(obj):
-                partial_func = self.__build_partial(self.__copy(obj), inject_returns)
+                partial_func = self.__build_partial(obj, inject_returns)
                 return partial_func
             case _ if isinstance(obj, FromContainer):
                 raise PartialContainerException("Cannot build FromContainer object")
             case _:
-                return self.__copy(obj)
+                return obj
 
     @staticmethod
     def __copy(target: Any):

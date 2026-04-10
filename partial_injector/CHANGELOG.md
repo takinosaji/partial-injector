@@ -2,6 +2,12 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 3.2.6 - 2026-03-17
+
+_*Changed*_
+
+- Fixed issue with resolving only first item in the list of dependencies, registered with list key
+
 ## 3.2.5 - 2026-03-16
 
 _*Changed*_

@@ -2,6 +2,12 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 2.3.0 - 2026-03-21
+
+_*Added*_
+
+- uv support for pyproject_toml_based get_version method
+
 ## 2.2.1 - 2026-03-08
 
 _*Added*_

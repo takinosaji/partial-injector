@@ -21,9 +21,8 @@ def __outer_function(number_container: NumberContainer) -> int:
 def test_transient_factory_produces_new_instance_each_time_it_requested_directly():
     # Arrange
     container = Container()
-    number_container = NumberContainer()
 
-    container.register_transient_factory(lambda: number_container, key=NumberContainer)
+    container.register_transient_factory(lambda: NumberContainer(), key=NumberContainer)
     container.build()
 
     # Act / Assert
@@ -33,24 +32,23 @@ def test_transient_factory_produces_new_instance_each_time_it_requested_directly
     number_container.increment()
 
     number_container = container.resolve(NumberContainer)
-    assert number_container.value == 1
+    assert number_container.value == 0
 
 
 def test_transient_factory_produces_new_instance_each_time_it_used_as_parameter():
     # Arrange
     container = Container()
-    number_container = NumberContainer()
 
-    container.register_transient_factory(lambda: number_container, key=NumberContainer)
+    container.register_transient_factory(lambda: NumberContainer(), key=NumberContainer)
     container.register_singleton(__outer_function)
     container.build()
 
     # Act
     container.resolve(__outer_function)()
-    container.resolve(__outer_function)()
+    final_value = container.resolve(__outer_function)()
 
     # Assert
-    assert number_container.value == 0
+    assert final_value == 1
 
 
 def test_transient_factory_works_the_same_when_resolved_directly_and_used_as_parameter_together():
