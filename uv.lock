@@ -55,7 +55,7 @@ wheels = [
 
 [[package]]
 name = "partial-injector"
-version = "3.2.6"
+version = "3.3.0"
 source = { editable = "src/partial-injector" }
 
 [[package]]
@@ -150,12 +150,12 @@ wheels = [
 
 [[package]]
 name = "spinq"
-version = "1.4.0"
+version = "1.5.0"
 source = { editable = "src/spinq" }
 
 [[package]]
 name = "sversion"
-version = "2.3.0"
+version = "2.4.0"
 source = { editable = "src/sversion" }
 dependencies = [
     { name = "toml" },

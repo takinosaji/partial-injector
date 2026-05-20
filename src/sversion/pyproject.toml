@@ -1,11 +1,11 @@
 [project]
 name = "sversion"
-version = "2.3.0"
+version = "2.4.0"
 description = "Simple version management in Python"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Kostiantyn Chomakov", email = "kostiantyn.chomakov@gmail.com" }]
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.12"
 dependencies = [
   "toml>=0.10.2",
 ]

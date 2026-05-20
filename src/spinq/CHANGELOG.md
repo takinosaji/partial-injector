@@ -2,6 +2,12 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 1.5.0 - 2026-05-19
+
+_*Changed*_
+
+- Lowered minimum supported Python version to 3.12
+
 ## 1.1.0 - 2025-04-29
 
 _*Changed*_
