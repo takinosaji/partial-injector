@@ -21,6 +21,7 @@ type BuiltEntry = "SingletonBuilt | TransientBuilt | GroupBuilt"
 @dataclass
 class SingletonBuilt:
     """A fully materialised singleton value."""
+
     registration: Registration
     value: Any
 
@@ -28,8 +29,9 @@ class SingletonBuilt:
 @dataclass
 class TransientBuilt:
     """Deferred transient entry — a new value is produced on each resolution."""
+
     registration: Registration
-    factory: "TransientContainer"
+    factory: TransientContainer
 
 
 @dataclass
@@ -40,8 +42,9 @@ class GroupBuilt:
     ``items`` holds one ``SingletonBuilt`` or ``TransientBuilt`` per registration
     that survived its condition check.  An empty list means every condition failed.
     """
+
     first_registration: Registration
-    items: "list[SingletonBuilt | TransientBuilt]"
+    items: list[SingletonBuilt | TransientBuilt]
 
 
 class TransientContainer:
@@ -51,6 +54,7 @@ class TransientContainer:
     ``factory`` is a bound method of ``Container`` accepting a ``Registration``
     and returning the resolved value.
     """
+
     __slots__ = ("_factory", "registration")
 
     def __init__(

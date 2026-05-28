@@ -1,4 +1,5 @@
 import re
+
 import pytest
 
 from partial_injector.error_handling import PartialContainerError
@@ -72,11 +73,14 @@ def test_transient_function_references_are_different():
     assert first_number_container_returner is not second_number_container_returner
     assert first_number_container_returner() is second_number_container_returner()
 
+
 def test_transient_with_from_container_resolution():
     # Arrange
     container = Container()
     container.register_singleton(42, key=int)
-    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str)
+    container.register_transient(
+        FromContainer(int, lambda value: f"str: {value + 1}"), key=str
+    )
     container.build()
 
     # Act
@@ -84,6 +88,7 @@ def test_transient_with_from_container_resolution():
 
     # Assert
     assert result1 == "str: 43"
+
 
 def test_transient_instance_injected_into_singleton_gets_fresh_copy_each_call():
     # Arrange
@@ -105,9 +110,9 @@ def test_transient_instance_injected_into_singleton_gets_fresh_copy_each_call():
     second = container.resolve(receive_dep)()
 
     # Assert
-    assert first is not second       # distinct copies, not the same object
+    assert first is not second  # distinct copies, not the same object
     first.increment()
-    assert second.value == 0         # mutations on one copy do not affect the other
+    assert second.value == 0  # mutations on one copy do not affect the other
 
 
 def test_transient_function_injected_into_singleton_gets_fresh_copy_each_call():
@@ -134,10 +139,12 @@ def test_transient_function_injected_into_singleton_gets_fresh_copy_each_call():
     second_counter = container.resolve(receive_counter)()
 
     # Assert
-    assert first_counter is not second_counter   # distinct function objects (fresh clones)
+    assert (
+        first_counter is not second_counter
+    )  # distinct function objects (fresh clones)
     assert callable(first_counter)
     assert callable(second_counter)
-    assert first_counter() == 1     # both clones share the closure → same shared counter
+    assert first_counter() == 1  # both clones share the closure → same shared counter
     assert second_counter() == 2
 
 
@@ -145,22 +152,40 @@ def test_transient_throws_when_single_dependency_conditions_false_and_throw_not_
     # Arrange
     container = Container()
     container.register_singleton(42, key=int)
-    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str, condition=lambda: False)
+    container.register_transient(
+        FromContainer(int, lambda value: f"str: {value + 1}"),
+        key=str,
+        condition=lambda: False,
+    )
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerError,
-                       match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
+    with pytest.raises(
+        PartialContainerError,
+        match=re.escape(
+            "No object with key <class 'str'> was built because the built condition has not been met."
+        ),
+    ):
         container.resolve(str)
+
 
 def test_transient_throws_when_single_dependency_conditions_false_and_throw_set():
     # Arrange
     container = Container()
     container.register_transient(42, key=int)
-    container.register_transient(FromContainer(int, lambda value: f"str: {value + 1}"), key=str, condition=lambda: False, throw_if_condition_not_satisfied=True)
+    container.register_transient(
+        FromContainer(int, lambda value: f"str: {value + 1}"),
+        key=str,
+        condition=lambda: False,
+        throw_if_condition_not_satisfied=True,
+    )
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerError,
-                       match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
+    with pytest.raises(
+        PartialContainerError,
+        match=re.escape(
+            "No object with key <class 'str'> was built because the built condition has not been met."
+        ),
+    ):
         container.resolve(str)

@@ -1,0 +1,14 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6
+    hooks:
+      - id: ruff
+        name: ruff
+        args: ["--config", "pyproject.toml"]
+        files: "^(src|tests|sdlc)/"
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-r", "-c", ".bandit", "src", "tests", "sdlc"]

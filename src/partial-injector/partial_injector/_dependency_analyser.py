@@ -9,8 +9,8 @@ process keys in the correct order.
 import inspect
 from collections.abc import Callable
 from dataclasses import replace
-from typing import Any
 
+from partial_injector._algorithms import _find_param_key, _registration_category
 from partial_injector._models import (
     ContainerKey,
     ContainerObject,
@@ -18,7 +18,6 @@ from partial_injector._models import (
     Registration,
     RegistrationType,
 )
-from partial_injector._algorithms import _registration_category, _find_param_key
 
 
 class _DependencyAnalyser:
@@ -73,7 +72,10 @@ class _DependencyAnalyser:
                     deps |= self._reg_deps(replace(reg, obj=item))
             # "instance" has no structural deps
 
-        if reg.type in (RegistrationType.SINGLETON_FACTORY, RegistrationType.TRANSIENT_FACTORY):
+        if reg.type in (
+            RegistrationType.SINGLETON_FACTORY,
+            RegistrationType.TRANSIENT_FACTORY,
+        ):
             deps |= self._injectable_arg_deps(reg.factory_args, reg.factory_kwargs)
 
         deps |= self._injectable_arg_deps(reg.condition_args, reg.condition_kwargs)
@@ -84,7 +86,7 @@ class _DependencyAnalyser:
         deps: set[ContainerKey] = set()
         try:
             sig = inspect.signature(func)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return frozenset()
         for param_name, param in sig.parameters.items():
             reg_key, _ = _find_param_key(self._registered, self._lod, param_name, param)
@@ -99,7 +101,7 @@ class _DependencyAnalyser:
     ) -> frozenset[ContainerKey]:
         """Return registered keys referenced by ``FromContainer`` items in *args*/*kwargs*."""
         deps: set[ContainerKey] = set()
-        for item in (args or []):
+        for item in args or []:
             if isinstance(item, FromContainer):
                 deps.add(self._normalise_key(item.source_key))
         for item in (kwargs or {}).values():

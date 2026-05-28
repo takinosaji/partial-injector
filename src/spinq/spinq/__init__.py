@@ -9,6 +9,6 @@ dicts : Functions for searching and indexing dictionaries.
 
 __author__ = "kostiantyn.chomakov@gmail.com"
 
-from . import lists, dicts
+from . import dicts, lists
 
-__all__ = ['lists', 'dicts']
+__all__ = ["lists", "dicts"]

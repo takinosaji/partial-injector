@@ -11,9 +11,6 @@ error_handling       : ``VersionNotFoundException``.
 
 __author__ = "kostiantyn.chomakov@gmail.com"
 
-from . import version_file_based, pyproject_toml_based, error_handling, contracts
+from . import contracts, error_handling, pyproject_toml_based, version_file_based
 
-__all__ = ['version_file_based',
-           'pyproject_toml_based',
-           'error_handling',
-           'contracts']
+__all__ = ["version_file_based", "pyproject_toml_based", "error_handling", "contracts"]

@@ -19,9 +19,9 @@ from collections.abc import Callable
 from inspect import isfunction
 from typing import Any
 
-from partial_injector._models import ContainerKey
-from partial_injector._entries import BuiltEntry
 from partial_injector._algorithms import _find_param_key, _is_dynamic_entry
+from partial_injector._entries import BuiltEntry
+from partial_injector._models import ContainerKey
 
 
 class _FunctionWirer:
@@ -132,9 +132,11 @@ class _FunctionWirer:
         resolve = self._resolve_value
 
         if inspect.iscoroutinefunction(func):
+
             async def _async_dynamic_wrapper(*args: Any, **kwargs: Any) -> Any:
                 fresh = {name: resolve(dep) for name, dep in dynamic_deps.items()}
                 return await partially_applied(*args, **fresh, **kwargs)
+
             functools.update_wrapper(_async_dynamic_wrapper, func)
             return _async_dynamic_wrapper
 
@@ -155,11 +157,13 @@ class _FunctionWirer:
         callables are supported.
         """
         if inspect.iscoroutinefunction(func):
+
             async def _async_wrapper(*args: Any, **kwargs: Any) -> Any:
                 result = await func(*args, **kwargs)
                 if isfunction(result):
                     return self.wire(result, inject_returns=True)
                 return result
+
             return _async_wrapper
 
         def _sync_wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -167,4 +171,5 @@ class _FunctionWirer:
             if isfunction(result):
                 return self.wire(result, inject_returns=True)
             return result
+
         return _sync_wrapper

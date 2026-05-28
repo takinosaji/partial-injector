@@ -1,0 +1,136 @@
+{
+    "configurations": [
+        {
+            "name": "run-all-tests",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "args": ["-W", "error"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "purpose": ["debug-test"],
+            "justMyCode": true
+        },
+        {
+            "name": "run-lint-fix",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ruff",
+            "args": ["check", ".", "--fix"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "run-format",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "ruff",
+            "args": ["format", "."],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "run-security-check",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "bandit",
+            "args": ["-r", "./src", "./tests", "./sdlc", "-c", ".bandit"],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "install-root-dependencies",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/ci/install-scripts/install-all-dependencies.py",
+            "args": ["${workspaceFolder}", "--all-groups"],
+            "cwd": "${workspaceFolder}/sdlc/ci/install-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "install-packages-dependencies",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/ci/install-scripts/install-all-dependencies.py",
+            "args": ["${workspaceFolder}/src", "${workspaceFolder}/tests", "--recursive", "--all-groups"],
+            "cwd": "${workspaceFolder}/sdlc/ci/install-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "update-root-dependencies",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/local-dev/dev-scripts/update-all-dependencies.py",
+            "args": ["${workspaceFolder}"],
+            "cwd": "${workspaceFolder}/sdlc/local-dev/dev-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "update-packages-dependencies",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/local-dev/dev-scripts/update-all-dependencies.py",
+            "args": ["${workspaceFolder}/src", "${workspaceFolder}/tests", "--recursive"],
+            "cwd": "${workspaceFolder}/sdlc/local-dev/dev-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "delete-all-locks",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/local-dev/dev-scripts/delete-all-locks.py",
+            "args": ["${workspaceFolder}", "--recursive"],
+            "cwd": "${workspaceFolder}/sdlc/local-dev/dev-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "fix-all-locks",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/local-dev/dev-scripts/fix-all-locks.py",
+            "args": ["${workspaceFolder}", "--recursive"],
+            "cwd": "${workspaceFolder}/sdlc/local-dev/dev-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        },
+        {
+            "name": "upgrade-pyproject-versions",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/sdlc/local-dev/dev-scripts/upgrade-pyproject-versions.py",
+            "args": ["${workspaceFolder}"],
+            "cwd": "${workspaceFolder}/sdlc/local-dev/dev-scripts",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "justMyCode": true
+        }
+    ]
+}

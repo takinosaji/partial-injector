@@ -26,14 +26,10 @@ all_                      Return ``True`` if every element satisfies a predicate
 none_                     Return ``True`` if no element satisfies a predicate.
 """
 
-from typing import Callable, TypeVar, Optional
-
-T = TypeVar('T')
-T2 = TypeVar('T2')
-TKey = TypeVar('TKey')
+from collections.abc import Callable
 
 
-def first_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> T:
+def first_[T](sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> T:
     """Return the first element in *sequence* that satisfies *predicate*.
 
     Raises ``ValueError`` when no element matches.
@@ -41,20 +37,24 @@ def first_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -
     try:
         return next(x for x in sequence if predicate(x))
     except StopIteration:
-        raise ValueError("No elements match the predicate.")
+        raise ValueError("No elements match the predicate.") from None
 
 
-def first_or_none_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> Optional[T]:
+def first_or_none_[T](
+    sequence: list[T], predicate: Callable[[T], bool] = lambda x: True
+) -> T | None:
     """Return the first element in *sequence* that satisfies *predicate*, or ``None``."""
     return next((x for x in sequence if predicate(x)), None)
 
 
-def first_or_none_with_index_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> Optional[tuple[int, T]]:
+def first_or_none_with_index_[T](
+    sequence: list[T], predicate: Callable[[T], bool] = lambda x: True
+) -> tuple[int, T] | None:
     """Return ``(index, element)`` for the first match, or ``None`` when nothing matches."""
     return next(((i, x) for i, x in enumerate(sequence) if predicate(x)), None)
 
 
-def last_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> T:
+def last_[T](sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> T:
     """Return the last element in *sequence* that satisfies *predicate*.
 
     Raises ``ValueError`` when no element matches.
@@ -62,15 +62,17 @@ def last_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) ->
     try:
         return next(x for x in reversed(sequence) if predicate(x))
     except StopIteration:
-        raise ValueError("No elements match the predicate.")
+        raise ValueError("No elements match the predicate.") from None
 
 
-def last_or_none_(sequence: list[T], predicate: Callable[[T], bool] = lambda x: True) -> Optional[T]:
+def last_or_none_[T](
+    sequence: list[T], predicate: Callable[[T], bool] = lambda x: True
+) -> T | None:
     """Return the last element in *sequence* that satisfies *predicate*, or ``None``."""
     return next((x for x in reversed(sequence) if predicate(x)), None)
 
 
-def single_(sequence: list[T], predicate: Callable[[T], bool]) -> T:
+def single_[T](sequence: list[T], predicate: Callable[[T], bool]) -> T:
     """Return the sole element in *sequence* that satisfies *predicate*.
 
     Raises ``ValueError`` when zero or more than one element matches.
@@ -83,7 +85,7 @@ def single_(sequence: list[T], predicate: Callable[[T], bool]) -> T:
     raise ValueError("More than one element matches the predicate.")
 
 
-def single_or_none_(sequence: list[T], predicate: Callable[[T], bool]) -> Optional[T]:
+def single_or_none_[T](sequence: list[T], predicate: Callable[[T], bool]) -> T | None:
     """Return the sole matching element, ``None`` when nothing matches.
 
     Raises ``ValueError`` when more than one element satisfies *predicate*.
@@ -96,22 +98,22 @@ def single_or_none_(sequence: list[T], predicate: Callable[[T], bool]) -> Option
     raise ValueError("More than one element matches the predicate.")
 
 
-def filter_(sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
+def filter_[T](sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
     """Return all elements in *sequence* that satisfy *predicate*."""
     return [x for x in sequence if predicate(x)]
 
 
-def except_(sequence: list[T], exclusions: list[T]) -> list[T]:
+def except_[T](sequence: list[T], exclusions: list[T]) -> list[T]:
     """Return *sequence* with every element that appears in *exclusions* removed."""
     return [x for x in sequence if x not in exclusions]
 
 
-def without_(sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
+def without_[T](sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
     """Return *sequence* with every element that satisfies *predicate* removed."""
     return [x for x in sequence if not predicate(x)]
 
 
-def union_(sequence1: list[T], sequence2: list[T]) -> list[T]:
+def union_[T](sequence1: list[T], sequence2: list[T]) -> list[T]:
     """Return the distinct union of *sequence1* and *sequence2*.
 
     Order of the result is not guaranteed.
@@ -119,17 +121,19 @@ def union_(sequence1: list[T], sequence2: list[T]) -> list[T]:
     return list(set(sequence1) | set(sequence2))
 
 
-def select_(sequence: list[T], selector: Callable[[T], T2]) -> list[T2]:
+def select_[T, T2](sequence: list[T], selector: Callable[[T], T2]) -> list[T2]:
     """Project each element of *sequence* through *selector*."""
     return [selector(x) for x in sequence]
 
 
-def select_many_(sequence: list[T], selector: Callable[[T], list[T2]]) -> list[T2]:
+def select_many_[T, T2](
+    sequence: list[T], selector: Callable[[T], list[T2]]
+) -> list[T2]:
     """Flat-map *sequence*: apply *selector* to each element then flatten one level."""
     return [item for x in sequence for item in selector(x)]
 
 
-def where_(sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
+def where_[T](sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
     """Return all elements in *sequence* that satisfy *predicate*.
 
     Alias for ``filter_``.
@@ -137,12 +141,14 @@ def where_(sequence: list[T], predicate: Callable[[T], bool]) -> list[T]:
     return [x for x in sequence if predicate(x)]
 
 
-def where_with_index_(sequence: list[T], predicate: Callable[[T], bool]) -> dict[int, T]:
+def where_with_index_[T](
+    sequence: list[T], predicate: Callable[[T], bool]
+) -> dict[int, T]:
     """Return a ``{index: element}`` mapping for every element that satisfies *predicate*."""
     return {i: x for i, x in enumerate(sequence) if predicate(x)}
 
 
-def distinct_(sequence: list[T]) -> list[T]:
+def distinct_[T](sequence: list[T]) -> list[T]:
     """Return *sequence* with duplicates removed.
 
     Order of the result is not guaranteed.
@@ -150,26 +156,28 @@ def distinct_(sequence: list[T]) -> list[T]:
     return list(set(sequence))
 
 
-def order_by_(sequence: list[T], key_selector: Callable[[T], TKey]) -> list[T]:
+def order_by_[T, TKey](sequence: list[T], key_selector: Callable[[T], TKey]) -> list[T]:
     """Return *sequence* sorted in ascending order by the value returned from *key_selector*."""
     return sorted(sequence, key=key_selector)
 
 
-def order_by_descending_(sequence: list[T], key_selector: Callable[[T], TKey]) -> list[T]:
+def order_by_descending_[T, TKey](
+    sequence: list[T], key_selector: Callable[[T], TKey]
+) -> list[T]:
     """Return *sequence* sorted in descending order by the value returned from *key_selector*."""
     return sorted(sequence, key=key_selector, reverse=True)
 
 
-def any_(sequence: list[T], predicate: Callable[[T], bool]) -> bool:
+def any_[T](sequence: list[T], predicate: Callable[[T], bool]) -> bool:
     """Return ``True`` if at least one element in *sequence* satisfies *predicate*."""
     return any(predicate(x) for x in sequence)
 
 
-def all_(sequence: list[T], predicate: Callable[[T], bool]) -> bool:
+def all_[T](sequence: list[T], predicate: Callable[[T], bool]) -> bool:
     """Return ``True`` if every element in *sequence* satisfies *predicate*."""
     return all(predicate(x) for x in sequence)
 
 
-def none_(sequence: list[T], predicate: Callable[[T], bool]) -> bool:
+def none_[T](sequence: list[T], predicate: Callable[[T], bool]) -> bool:
     """Return ``True`` if no element in *sequence* satisfies *predicate*."""
     return all(not predicate(x) for x in sequence)

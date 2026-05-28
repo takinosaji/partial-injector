@@ -19,13 +19,12 @@ from dataclasses import replace
 from inspect import isfunction
 from typing import Any, Generic, TypeVar
 
-from partial_injector._models import (
-    ContainerKey,
-    ContainerObject,
-    FromContainer,
-    Registration,
-    RegistrationType,
+from partial_injector._algorithms import (
+    _copy_object,
+    _registration_category,
+    _topological_sort,
 )
+from partial_injector._dependency_analyser import _DependencyAnalyser
 from partial_injector._entries import (
     BuiltEntry,
     GroupBuilt,
@@ -33,13 +32,14 @@ from partial_injector._entries import (
     TransientBuilt,
     TransientContainer,
 )
-from partial_injector._algorithms import (
-    _copy_object,
-    _registration_category,
-    _topological_sort,
-)
-from partial_injector._dependency_analyser import _DependencyAnalyser
 from partial_injector._function_wirer import _FunctionWirer
+from partial_injector._models import (
+    ContainerKey,
+    ContainerObject,
+    FromContainer,
+    Registration,
+    RegistrationType,
+)
 from partial_injector.error_handling import PartialContainerError
 
 # Re-export FromContainer so existing ``from partial_injector.partial_container import FromContainer``
@@ -81,7 +81,9 @@ class Container:
     All errors raise ``PartialContainerError``.
     """
 
-    type RegistrationsDictValue = Registration | "Container.ListOfDependencies[Registration]"
+    type RegistrationsDictValue = (
+        Registration | "Container.ListOfDependencies[Registration]"
+    )
 
     _T = TypeVar("_T")  # local TypeVar used only by ListOfDependencies
 
@@ -112,7 +114,9 @@ class Container:
         self._registered: dict[ContainerKey, Container.RegistrationsDictValue] = {}
         self.__built: dict[ContainerKey, BuiltEntry] = {}
         self.__is_built = False
-        self.__analyser = _DependencyAnalyser(self._registered, Container.ListOfDependencies)
+        self.__analyser = _DependencyAnalyser(
+            self._registered, Container.ListOfDependencies
+        )
         self.__wirer = _FunctionWirer(
             self._registered,
             Container.ListOfDependencies,
@@ -154,9 +158,16 @@ class Container:
         raises ``PartialContainerError`` instead of silently omitting the entry.
         """
         self.__register(
-            RegistrationType.SINGLETON, instance, key,
-            None, None, inject_returns, inject_items,
-            condition, condition_args, condition_kwargs,
+            RegistrationType.SINGLETON,
+            instance,
+            key,
+            None,
+            None,
+            inject_returns,
+            inject_items,
+            condition,
+            condition_args,
+            condition_kwargs,
             throw_if_condition_not_satisfied,
         )
 
@@ -183,9 +194,16 @@ class Container:
         See ``register_singleton`` for a description of the remaining parameters.
         """
         self.__register(
-            RegistrationType.TRANSIENT, instance, key,
-            None, None, inject_returns, inject_items,
-            condition, condition_args, condition_kwargs,
+            RegistrationType.TRANSIENT,
+            instance,
+            key,
+            None,
+            None,
+            inject_returns,
+            inject_items,
+            condition,
+            condition_args,
+            condition_kwargs,
             throw_if_condition_not_satisfied,
         )
 
@@ -214,9 +232,16 @@ class Container:
         See ``register_singleton`` for a description of the remaining parameters.
         """
         self.__register(
-            RegistrationType.SINGLETON_FACTORY, factory, key,
-            factory_args, factory_kwargs, inject_returns, False,
-            condition, condition_args, condition_kwargs,
+            RegistrationType.SINGLETON_FACTORY,
+            factory,
+            key,
+            factory_args,
+            factory_kwargs,
+            inject_returns,
+            False,
+            condition,
+            condition_args,
+            condition_kwargs,
             throw_if_condition_not_satisfied,
         )
 
@@ -242,9 +267,16 @@ class Container:
         parameters.
         """
         self.__register(
-            RegistrationType.TRANSIENT_FACTORY, factory, key,
-            factory_args, factory_kwargs, inject_returns, False,
-            condition, condition_args, condition_kwargs,
+            RegistrationType.TRANSIENT_FACTORY,
+            factory,
+            key,
+            factory_args,
+            factory_kwargs,
+            inject_returns,
+            False,
+            condition,
+            condition_args,
+            condition_kwargs,
             throw_if_condition_not_satisfied,
         )
 
@@ -355,7 +387,8 @@ class Container:
         for reg in registrations:
             if (
                 reg.condition is not None
-                and reg.type not in (RegistrationType.TRANSIENT, RegistrationType.TRANSIENT_FACTORY)
+                and reg.type
+                not in (RegistrationType.TRANSIENT, RegistrationType.TRANSIENT_FACTORY)
                 and not self.__execute_with_injections(
                     reg.condition, reg.condition_args, reg.condition_kwargs
                 )
@@ -420,7 +453,9 @@ class Container:
         if built_result is None:
             return None
         item_key, list_key = built_result
-        resolved_key = list_key if (param_is_list and list_key is not None) else item_key
+        resolved_key = (
+            list_key if (param_is_list and list_key is not None) else item_key
+        )
         if resolved_key is None or resolved_key not in self.__built:
             return None
         return self.__built[resolved_key]
@@ -545,8 +580,12 @@ class Container:
         kwargs: dict[str, ContainerObject] | None = None,
     ) -> Any:
         """Call *factory* with resolved args/kwargs (unwrapping ``FromContainer`` items)."""
-        resolved_args   = self.__build_from_container_args(args)    if args   is not None else []
-        resolved_kwargs = self.__build_from_container_kwargs(kwargs) if kwargs is not None else {}
+        resolved_args = (
+            self.__build_from_container_args(args) if args is not None else []
+        )
+        resolved_kwargs = (
+            self.__build_from_container_kwargs(kwargs) if kwargs is not None else {}
+        )
         return factory(*resolved_args, **resolved_kwargs)
 
     def __unwrap_injectable(self, item: ContainerObject) -> Any:

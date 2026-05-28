@@ -8,13 +8,16 @@ root.  The first match is parsed as TOML and the version is read from either
 """
 
 import os
+
 import toml
 
 from .contracts import Version, VersionRetriever
 from .error_handling import VersionNotFoundException
 
 
-def __get_version(start_search_path: str, project_file_name: str = "pyproject.toml") -> Version:
+def __get_version(
+    start_search_path: str, project_file_name: str = "pyproject.toml"
+) -> Version:
     """Walk up the directory tree from *start_search_path* looking for *project_file_name*.
 
     Parameters
@@ -42,16 +45,19 @@ def __get_version(start_search_path: str, project_file_name: str = "pyproject.to
         project_file_path = os.path.join(current_path, project_file_name)
         try:
             if os.path.exists(project_file_path):
-                with open(project_file_path, 'r') as project_file:
+                with open(project_file_path) as project_file:
                     project_data = toml.load(project_file)
-                    if "project" in project_data and "version" in project_data["project"]:
+                    if (
+                        "project" in project_data
+                        and "version" in project_data["project"]
+                    ):
                         return project_data["project"]["version"]
                     if "tool" in project_data and "poetry" in project_data["tool"]:
                         return project_data["tool"]["poetry"]["version"]
 
             current_path = os.path.dirname(current_path)
         except PermissionError:
-            raise VersionNotFoundException(error_message)
+            raise VersionNotFoundException(error_message) from None
 
     raise VersionNotFoundException(error_message)
 

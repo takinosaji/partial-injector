@@ -18,20 +18,20 @@ import copy
 import functools
 import inspect
 from collections import deque
-from collections.abc import Callable
-from dataclasses import replace
 from inspect import isfunction
 from types import FunctionType
 from typing import Any
 
+from partial_injector._entries import (
+    BuiltEntry,
+    GroupBuilt,
+    SingletonBuilt,
+    TransientBuilt,
+)
 from partial_injector._models import (
     ContainerKey,
-    ContainerObject,
     FromContainer,
-    Registration,
-    RegistrationType,
 )
-from partial_injector._entries import BuiltEntry, GroupBuilt, SingletonBuilt, TransientBuilt
 from partial_injector.error_handling import PartialContainerError
 
 

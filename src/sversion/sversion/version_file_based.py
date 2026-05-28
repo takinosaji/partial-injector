@@ -12,7 +12,9 @@ from .contracts import Version, VersionRetriever
 from .error_handling import VersionNotFoundException
 
 
-def __get_version(start_search_path: str, version_file_name: str = "VERSION.txt") -> Version:
+def __get_version(
+    start_search_path: str, version_file_name: str = "VERSION.txt"
+) -> Version:
     """Walk up the directory tree from *start_search_path* looking for *version_file_name*.
 
     Parameters
@@ -44,7 +46,7 @@ def __get_version(start_search_path: str, version_file_name: str = "VERSION.txt"
 
             current_path = os.path.dirname(current_path)
         except PermissionError:
-            raise VersionNotFoundException(error_message)
+            raise VersionNotFoundException(error_message) from None
 
     raise VersionNotFoundException(error_message)
 

@@ -1,8 +1,9 @@
 import re
+
 import pytest
 
-from partial_injector.partial_container import Container
 from partial_injector.error_handling import PartialContainerError
+from partial_injector.partial_container import Container
 
 
 class NumberContainer:
@@ -65,22 +66,24 @@ def test_transient_factory_works_the_same_when_resolved_directly_and_used_as_par
     # Act
     resolved_direct = container.resolve(NumberContainer)
     direct_value_before = resolved_direct.value  # 0 — fresh instance
-    resolved_direct.increment()                  # only this instance reaches value=1
+    resolved_direct.increment()  # only this instance reaches value=1
 
     # __outer_function injects NumberContainer; with transient it must receive
     # a *fresh* instance on every call, independent of resolved_direct.
     result_via_param = container.resolve(__outer_function)()
 
     # Assert
-    assert direct_value_before == 0    # captured before any increment
+    assert direct_value_before == 0  # captured before any increment
     assert resolved_direct.value == 1  # only one increment on the direct instance
-    assert result_via_param == 1       # fresh instance for the param, also incremented once
+    assert result_via_param == 1  # fresh instance for the param, also incremented once
 
 
 def test_single_transient_factory_registration_with_failed_dependency_throws():
     # Arrange
     container = Container()
-    container.register_transient_factory(lambda n: n, factory_args=[1], key=int, condition=lambda: False)
+    container.register_transient_factory(
+        lambda n: n, factory_args=[1], key=int, condition=lambda: False
+    )
     container.build()
 
     # Act / Assert
