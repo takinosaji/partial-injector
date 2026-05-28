@@ -2,6 +2,17 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 4.0.0 - 2026-05-28
+
+_*Changed*_
+
+- `PartialContainerException` renamed to `PartialContainerError` — update all `except` clauses and any code referencing the old name
+- Fixed captive dependency: transient dependencies injected into singleton functions now produce a fresh instance on every call instead of a single frozen copy baked in at `build()` time — code that inadvertently relied on the stale shared instance will observe changed behaviour
+
+_*Added*_
+
+- Internal collaborator modules extracted from `Container` for readability: `_entries`, `_algorithms`, `_dependency_analyser`, `_function_wirer`
+
 ## 3.3.0 - 2026-05-19
 
 _*Changed*_

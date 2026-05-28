@@ -3,7 +3,7 @@ from typing import Callable
 
 import pytest
 
-from partial_injector.error_handling import PartialContainerException
+from partial_injector.error_handling import PartialContainerError
 from partial_injector.partial_container import Container
 
 type NumberPassthrough = Callable[[int], int]
@@ -81,7 +81,7 @@ def test_container_throws_when_all_dependency_conditions_false_and_throw_set():
     container.register_singleton(return_three, key=NumberReturner, condition=lambda: False)
 
     # Act / Assert
-    with pytest.raises(PartialContainerException,
+    with pytest.raises(PartialContainerError,
                        match=re.escape("No objects with key partial_injector.partial_container.Container.ListOfDependencies[NumberReturner] were built because built conditions have not been met for any of the registrations.")):
         container.build()
 
@@ -249,7 +249,7 @@ def test_multiple_transient_factory_registration_with_failed_dependency_throw():
 
     # Act / Assert
     with pytest.raises(
-        PartialContainerException,
+        PartialContainerError,
         match=re.escape(
             "No objects with key <class 'int'> were built because built conditions have not been met for any of the registrations at the moment of resolution."
         ),
@@ -294,7 +294,7 @@ def test_multiple_singleton_factory_registration_with_failed_dependency_throw():
 
     # Act / Assert
     with pytest.raises(
-        PartialContainerException,
+        PartialContainerError,
         match=re.escape(
             "No objects with key partial_injector.partial_container.Container.ListOfDependencies[int] were built because built conditions have not been met for any of the registrations."
         ),

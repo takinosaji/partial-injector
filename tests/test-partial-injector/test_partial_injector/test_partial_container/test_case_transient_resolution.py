@@ -1,7 +1,7 @@
 import re
 import pytest
 
-from partial_injector.error_handling import PartialContainerException
+from partial_injector.error_handling import PartialContainerError
 from partial_injector.partial_container import Container, FromContainer
 
 
@@ -85,6 +85,62 @@ def test_transient_with_from_container_resolution():
     # Assert
     assert result1 == "str: 43"
 
+def test_transient_instance_injected_into_singleton_gets_fresh_copy_each_call():
+    # Arrange
+    # A transient *instance* (registered via register_transient, not a factory) is
+    # injected into a singleton function.  Each call to the singleton must receive
+    # an independent deepcopy of the original — not the same frozen object that was
+    # baked in at build() time (the "captive dependency" anti-pattern).
+    container = Container()
+
+    def receive_dep(dep: NumberContainer) -> NumberContainer:
+        return dep
+
+    container.register_transient(NumberContainer(), key=NumberContainer)
+    container.register_singleton(receive_dep)
+    container.build()
+
+    # Act
+    first = container.resolve(receive_dep)()
+    second = container.resolve(receive_dep)()
+
+    # Assert
+    assert first is not second       # distinct copies, not the same object
+    first.increment()
+    assert second.value == 0         # mutations on one copy do not affect the other
+
+
+def test_transient_function_injected_into_singleton_gets_fresh_copy_each_call():
+    # Arrange
+    # A transient *function* (registered via register_transient) is injected into a
+    # singleton function.  Each call to the singleton must receive a fresh function
+    # object (a new FunctionType clone), not the same instance frozen at build() time.
+    container = Container()
+    shared = NumberContainer()
+
+    def counter() -> int:
+        return shared.increment()
+
+    def receive_counter(counter):
+        return counter  # return the injected function so we can inspect it
+
+    # Register with a string key so the parameter name "counter" is matched directly.
+    container.register_transient(counter, key="counter")
+    container.register_singleton(receive_counter)
+    container.build()
+
+    # Act — each call to the singleton injects a fresh clone of counter
+    first_counter = container.resolve(receive_counter)()
+    second_counter = container.resolve(receive_counter)()
+
+    # Assert
+    assert first_counter is not second_counter   # distinct function objects (fresh clones)
+    assert callable(first_counter)
+    assert callable(second_counter)
+    assert first_counter() == 1     # both clones share the closure → same shared counter
+    assert second_counter() == 2
+
+
 def test_transient_throws_when_single_dependency_conditions_false_and_throw_not_set():
     # Arrange
     container = Container()
@@ -93,7 +149,7 @@ def test_transient_throws_when_single_dependency_conditions_false_and_throw_not_
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerException,
+    with pytest.raises(PartialContainerError,
                        match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
         container.resolve(str)
 
@@ -105,6 +161,6 @@ def test_transient_throws_when_single_dependency_conditions_false_and_throw_set(
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerException,
+    with pytest.raises(PartialContainerError,
                        match=re.escape("No object with key <class 'str'> was built because the built condition has not been met.")):
         container.resolve(str)

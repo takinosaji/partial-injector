@@ -1,5 +1,5 @@
 import pytest
-from partial_injector.error_handling import PartialContainerException
+from partial_injector.error_handling import PartialContainerError
 from partial_injector.partial_container import Container, FromContainer
 
 
@@ -98,7 +98,7 @@ def test_singleton_factory_raises_when_factory_returns_fromcontainer():
     container.register_singleton_factory(factory, key="bad")
 
     # Act / Assert
-    with pytest.raises(PartialContainerException, match="Cannot build FromContainer object"):
+    with pytest.raises(PartialContainerError, match="Cannot build FromContainer object"):
         container.build()
 
 
@@ -110,7 +110,7 @@ def test_singleton_factory_register_after_build_raises():
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerException, match="Container already built"):
+    with pytest.raises(PartialContainerError, match="Container already built"):
         container.register_singleton_factory(lambda: 2, key="other")
 
 
@@ -122,7 +122,7 @@ def test_singleton_factory_resolve_unregistered_key_raises_not_registered():
     container.build()
 
     # Act / Assert
-    with pytest.raises(PartialContainerException, match="Object with key unknown not built"):
+    with pytest.raises(PartialContainerError, match="Object with key unknown not built"):
         container.resolve("unknown")
 
 
@@ -133,5 +133,5 @@ def test_singleton_factory_resolve_not_built_key_raises_not_built():
     container.register_singleton_factory(lambda: 1, key="value")
 
     # Act / Assert
-    with pytest.raises(PartialContainerException, match="Container not built"):
+    with pytest.raises(PartialContainerError, match="Container not built"):
         container.resolve("value")

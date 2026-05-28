@@ -1,10 +1,36 @@
+"""
+pyproject_toml_based — retrieve a package version from ``pyproject.toml``.
+
+Starting at *start_search_path* (a file or directory), ``get_version`` walks up
+the directory tree until it finds *project_file_name* or reaches the filesystem
+root.  The first match is parsed as TOML and the version is read from either
+``project.version`` (PEP 517/518) or ``tool.poetry.version`` (Poetry layout).
+"""
+
 import os
 import toml
 
 from .contracts import Version, VersionRetriever
 from .error_handling import VersionNotFoundException
 
+
 def __get_version(start_search_path: str, project_file_name: str = "pyproject.toml") -> Version:
+    """Walk up the directory tree from *start_search_path* looking for *project_file_name*.
+
+    Parameters
+    ----------
+    start_search_path:
+        File or directory to start searching from.  When a file path is given
+        the search begins in its parent directory.
+    project_file_name:
+        Name of the project file to look for (default: ``"pyproject.toml"``).
+
+    Checks ``project.version`` first, then ``tool.poetry.version``.
+
+    Raises ``VersionNotFoundException`` when no file is found, the version key
+    is absent in all candidates, or a directory cannot be read due to a
+    permission error.
+    """
     error_message = f"{project_file_name} was not found in the module folder or one of the parent folders."
 
     if os.path.isfile(start_search_path):
@@ -28,4 +54,6 @@ def __get_version(start_search_path: str, project_file_name: str = "pyproject.to
             raise VersionNotFoundException(error_message)
 
     raise VersionNotFoundException(error_message)
+
+
 get_version: VersionRetriever = __get_version

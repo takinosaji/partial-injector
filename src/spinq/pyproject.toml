@@ -1,6 +1,6 @@
 [project]
 name = "spinq"
-version = "1.5.0"
+version = "1.6.0"
 description = "Simple LINQ in Python"
 readme = "README.md"
 license = { text = "MIT" }

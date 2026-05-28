@@ -1,4 +1,4 @@
-class PartialContainerException(Exception):
+class PartialContainerError(Exception):
     def __init__(self, message):
         self.message = message
 

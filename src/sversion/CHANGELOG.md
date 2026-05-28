@@ -2,6 +2,17 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 2.5.0 - 2026-05-28
+
+_*Fixed*_
+
+- `pyproject_toml_based` was listed in `__all__` but never imported in `__init__.py`; direct `from sversion import pyproject_toml_based` now works as expected
+- Unclosed file handle in `version_file_based.get_version` replaced with a `with` statement
+
+_*Changed*_
+
+- Added module and function docstrings throughout
+
 ## 2.4.0 - 2026-05-19
 
 _*Changed*_

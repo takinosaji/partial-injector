@@ -1,56 +1,89 @@
 # sversion
 
-Simple version retrieval for Python projects. Walks up the directory tree from a given path and reads the version from a `pyproject.toml` or a plain `VERSION.txt` file.
+[![PyPI version](https://img.shields.io/pypi/v/sversion.svg)](https://pypi.org/project/sversion/)
+[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Requirements
+Zero-config version retrieval for Python packages. Pass `__file__` and get your package version back — no hard-coding, no import tricks, no build-time templating.
 
-Python 3.14+
+Supports `pyproject.toml` (PEP 621 and Poetry layouts) and plain `VERSION.txt` files.
 
-## Installation
+## Install
 
 ```bash
 pip install sversion
 ```
 
-## Usage
+## Quick start
 
-### From `pyproject.toml`
+The most common use is exposing `__version__` from a package `__init__.py`:
+
+```python
+# my_package/__init__.py
+from sversion.pyproject_toml_based import get_version
+
+__version__ = get_version(__file__)
+```
+
+`get_version` walks up from `my_package/` until it finds `pyproject.toml` and reads the version from it. No path configuration needed.
+
+## How the search works
+
+Starting at the path you pass, both strategies walk up the directory tree level by level until the target file is found or the filesystem root is reached:
+
+```
+my_repo/
+├── my_package/
+│   └── __init__.py   ← pass __file__ here
+├── tests/
+└── pyproject.toml    ← found here, version returned
+```
+
+Both file paths and directory paths are accepted. When a file is passed, the search starts in its parent directory.
+
+---
+
+## From `pyproject.toml`
 
 Reads `project.version` (PEP 621) or `tool.poetry.version`:
 
 ```python
 from sversion.pyproject_toml_based import get_version
 
-version = get_version(__file__)
-print(version)  # e.g. "1.2.3"
+version = get_version(__file__)             # "1.2.3"
+version = get_version("/path/to/project")  # directory path also works
 ```
 
-Pass a custom filename to look for a differently named TOML file:
+Use `project_file_name` to look for a non-standard filename:
 
 ```python
 version = get_version(__file__, project_file_name="my_project.toml")
 ```
 
-### From a version file
+## From a version file
 
-Reads the first non-whitespace content of a `VERSION.txt` file:
+Reads the trimmed contents of a `VERSION.txt` file:
 
 ```python
 from sversion.version_file_based import get_version
 
 version = get_version(__file__)
-print(version)  # e.g. "1.2.3"
+version = get_version(__file__, version_file_name="RELEASE")  # custom filename
 ```
 
-Pass a custom filename:
+## Error handling
+
+Both functions raise `VersionNotFoundException` when no matching file is found before reaching the filesystem root:
 
 ```python
-version = get_version(__file__, version_file_name="RELEASE")
+from sversion.pyproject_toml_based import get_version
+from sversion.error_handling import VersionNotFoundException
+
+try:
+    version = get_version(__file__)
+except VersionNotFoundException as e:
+    version = "unknown"
 ```
-
-### How the search works
-
-Both functions accept either a file path or a directory path as `start_search_path`. Starting from that location they walk up the directory tree, checking each level for the target file, and return the version from the first match found.
 
 ## API
 
@@ -62,7 +95,9 @@ get_version(start_search_path: str, project_file_name: str = "pyproject.toml") -
 get_version(start_search_path: str, version_file_name: str = "VERSION.txt") -> str
 ```
 
-Both raise `VersionNotFoundException` (from `sversion.error_handling`) when no matching file is found before reaching the filesystem root.
+Both raise `sversion.error_handling.VersionNotFoundException` on failure.
+
+---
 
 ## License
 

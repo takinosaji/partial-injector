@@ -1,551 +1,676 @@
-import copy
-import functools
-import inspect
-from dataclasses import dataclass, replace
-from enum import Enum
-from functools import partial
+"""
+partial_container — the DI container and its public surface.
+
+Public surface
+--------------
+- ``Container``       The DI container.
+- ``FromContainer``   Descriptor for pulling values from the container.
+
+Internal modules
+----------------
+_entries.py              Sealed BuiltEntry hierarchy and TransientContainer.
+_algorithms.py           Pure stateless functions (topo sort, copy, key lookup …).
+_dependency_analyser.py  Builds the dependency graph for topological ordering.
+_function_wirer.py       Wires callables with registered dependencies.
+"""
+
+from collections.abc import Callable
+from dataclasses import replace
 from inspect import isfunction
-from types import FunctionType
-from typing import Callable, Optional, Any, TypeVar, Generic, TypeAliasType
+from typing import Any, Generic, TypeVar
 
-from partial_injector.error_handling import PartialContainerException
+from partial_injector._models import (
+    ContainerKey,
+    ContainerObject,
+    FromContainer,
+    Registration,
+    RegistrationType,
+)
+from partial_injector._entries import (
+    BuiltEntry,
+    GroupBuilt,
+    SingletonBuilt,
+    TransientBuilt,
+    TransientContainer,
+)
+from partial_injector._algorithms import (
+    _copy_object,
+    _registration_category,
+    _topological_sort,
+)
+from partial_injector._dependency_analyser import _DependencyAnalyser
+from partial_injector._function_wirer import _FunctionWirer
+from partial_injector.error_handling import PartialContainerError
+
+# Re-export FromContainer so existing ``from partial_injector.partial_container import FromContainer``
+# imports keep working.
+__all__ = ["Container", "FromContainer"]
 
 
-type ContainerKey = str | type | TypeAliasType | Callable
-type ContainerObject = Any | FromContainer
-
-
-class RegistrationType(Enum):
-    SINGLETON = "SINGLETON"
-    TRANSIENT = "TRANSIENT"
-    SINGLETON_FACTORY = "SINGLETON_FACTORY"
-    TRANSIENT_FACTORY = "TRANSIENT_FACTORY"
-
-
-class Container: # TODO: Add validation and proper error handling
+class Container:
     """
-    This is a dependency injection tool that was designed to work with functions for those, who employs techniques of FP.
-    It has got such name because it uses and is primarily based on partial function capabilities of Python.
+    Dependency injection container based on ``functools.partial``.
+
+    Usage::
+
+        container = Container()
+        container.register_singleton(my_service, key=MyService)
+        container.register_singleton_factory(make_other, key=OtherService)
+        container.build()
+
+        svc = container.resolve(MyService)
+
+    **Registration**
+    Register functions, instances, or factories with ``register_singleton``,
+    ``register_transient``, ``register_singleton_factory``, or
+    ``register_transient_factory``.
+
+    **Building**
+    ``build()`` performs a topological sort of all registered keys, detects
+    circular dependencies (raising a clear error with the cycle path), and then
+    builds each key in dependency order.  Registered callables have their
+    parameter annotations matched against registered keys and are wrapped in
+    ``functools.partial`` with those dependencies pre-filled by keyword.
+
+    **Resolution**
+    ``resolve(key)`` returns the wired object.
+
+    **Multiple registrations under the same key**
+    Registering two objects under the same key groups them; resolve as ``list[Key]``.
+
+    All errors raise ``PartialContainerError``.
     """
-    type RegistrationsDictValue = Container.Registration | Container.ListOfDependencies[Container.Registration]
 
-    class BuiltDictValue:
-        def __init__(self,
-                     first_registration: 'Container.Registration',
-                     value: Any,
-                     execute_with_injections: Callable[[Callable, Optional[list[ContainerObject]], Optional[dict[str, ContainerObject]]], Any]):
-            self._value = value
-            self._first_registration = first_registration
-            self._execute_with_injections = execute_with_injections
+    type RegistrationsDictValue = Registration | "Container.ListOfDependencies[Registration]"
 
-        @property
-        def value(self) -> Any:
-            match self._value:
-                case _ if isinstance(self._value, Container.TransientContainer):
-                    if (self._value.registration.condition is not None and
-                        not self._execute_with_injections(self._first_registration.condition,
-                                                          self._first_registration.condition_args,
-                                                          self._first_registration.condition_kwargs)):
-                        raise PartialContainerException(
-                            f"No object with key {self._first_registration.key} was built because the built condition has not been met.")
-                    return self._value()
-                case _ if isinstance(self._value, list):
-                    allowed_dependencies = []
-                    throw_if_condition_not_satisfied = False
+    _T = TypeVar("_T")  # local TypeVar used only by ListOfDependencies
 
-                    for item in self._value:
-                        if isinstance(item, Container.TransientContainer):
-                            if (item.registration.condition is not None and
-                                not self._execute_with_injections(item.registration.condition,
-                                                                  item.registration.condition_args,
-                                                                  item.registration.condition_kwargs)):
-                                if item.registration.throw_if_condition_not_satisfied:
-                                    throw_if_condition_not_satisfied = True
-                                continue
-                            allowed_dependencies.append(item())
-                        else:
-                            allowed_dependencies.append(item)
+    class ListOfDependencies(Generic[_T]):
+        """
+        Groups multiple ``Registration`` objects that share the same key.
 
-                    if len(allowed_dependencies) == 0 and throw_if_condition_not_satisfied:
-                        raise PartialContainerException(
-                            f"No objects with key {self._first_registration.key} were built because built conditions have not been met for any of the registrations at the moment of resolution.")
+        Kept as an inner class so its fully-qualified name
+        ``partial_injector.partial_container.Container.ListOfDependencies``
+        appears in error messages.
+        """
 
-                    return allowed_dependencies
-                case _:
-                    return self._value
+        def __init__(self, *args: Any) -> None:
+            if len(args) == 0:
+                self.registrations: list[Registration] = []
+            elif len(args) == 1 and isinstance(args[0], list):
+                self.registrations = args[0]
+            else:
+                self.registrations = list(args)
 
-        @value.setter
-        def value(self, value: Any) -> None:
-            self._value = value
+        def append(self, registration: Registration) -> None:
+            self.registrations.append(registration)
 
-    class TransientContainer:
-        def __init__(self,
-                     transient_callable: Callable,
-                     registration: 'Container.Registration'):
-            self._transient_callable = transient_callable
-            self.registration = registration
+        def extend(self, registrations: list[Registration]) -> None:
+            self.registrations.extend(registrations)
 
-        def __call__(self):
-            factory_result = self._transient_callable(self.registration)
-            return factory_result
-
-    def __init__(self):
-        self._registered = dict[ContainerKey, Container.RegistrationsDictValue]()
-        self.__built = dict[ContainerKey, Container.BuiltDictValue]()
+    def __init__(self) -> None:
+        self._registered: dict[ContainerKey, Container.RegistrationsDictValue] = {}
+        self.__built: dict[ContainerKey, BuiltEntry] = {}
         self.__is_built = False
+        self.__analyser = _DependencyAnalyser(self._registered, Container.ListOfDependencies)
+        self.__wirer = _FunctionWirer(
+            self._registered,
+            Container.ListOfDependencies,
+            self.__lookup_param_entry,
+            self.__resolve_value,
+        )
 
-    def register_singleton(self,
-                           instance: ContainerObject,
-                           key: Optional[ContainerKey] = None,
-                           inject_returns: bool = False,
-                           inject_items: bool = False,
-                           condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
-                           condition_args: Optional[list[ContainerObject]]=None,
-                           condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                           throw_if_condition_not_satisfied: bool = False):
-        return self.__register(RegistrationType.SINGLETON,
-                               instance,
-                               key,
-                               None,
-                               None,
-                               inject_returns,
-                               inject_items,
-                               condition,
-                               condition_args,
-                               condition_kwargs,
-                               throw_if_condition_not_satisfied)
+    def register_singleton(
+        self,
+        instance: ContainerObject,
+        key: ContainerKey | None = None,
+        inject_returns: bool = False,
+        inject_items: bool = False,
+        condition: Callable[..., bool] | None = None,
+        condition_args: list[ContainerObject] | None = None,
+        condition_kwargs: dict[str, ContainerObject] | None = None,
+        throw_if_condition_not_satisfied: bool = False,
+    ) -> None:
+        """
+        Register *instance* as a singleton.
 
-    def register_transient(self,
-                           instance: ContainerObject,
-                           key: Optional[ContainerKey] = None,
-                           inject_returns: bool = False,
-                           inject_items: bool = False,
-                           condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
-                           condition_args: Optional[list[ContainerObject]]=None,
-                           condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                           throw_if_condition_not_satisfied: bool = False):
-        return self.__register(RegistrationType.TRANSIENT,
-                               instance,
-                               key,
-                               None,
-                               None,
-                               inject_returns,
-                               inject_items,
-                               condition,
-                               condition_args,
-                               condition_kwargs,
-                               throw_if_condition_not_satisfied)
+        The same object (or wired callable) is returned on every ``resolve`` call.
 
-    def register_singleton_factory(self,
-                                   factory: Callable,
-                                   key: Optional[ContainerKey] = None,
-                                   factory_args: Optional[list[ContainerObject]]=None,
-                                   factory_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   inject_returns: bool = False,
-                                   condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
-                                   condition_args: Optional[list[ContainerObject]]=None,
-                                   condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   throw_if_condition_not_satisfied: bool = False):
-        return self.__register(RegistrationType.SINGLETON_FACTORY,
-                               factory,
-                               key,
-                               factory_args,
-                               factory_kwargs,
-                               inject_returns,
-                               False,
-                               condition,
-                               condition_args,
-                               condition_kwargs,
-                               throw_if_condition_not_satisfied)
+        ``key`` — the lookup key used later with ``resolve``.  Defaults to
+        *instance* itself, which works well for functions and types.
 
-    def register_transient_factory(self,
-                                   factory: Callable,
-                                   key: Optional[ContainerKey] = None,
-                                   factory_args: Optional[list[ContainerObject]]=None,
-                                   factory_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   inject_returns: bool = False,
-                                   condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
-                                   condition_args: Optional[list[ContainerObject]]=None,
-                                   condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                                   throw_if_condition_not_satisfied: bool = False):
-        return self.__register(RegistrationType.TRANSIENT_FACTORY,
-                               factory,
-                               key,
-                               factory_args,
-                               factory_kwargs,
-                               inject_returns,
-                               False,
-                               condition,
-                               condition_args,
-                               condition_kwargs,
-                               throw_if_condition_not_satisfied)
+        ``inject_returns`` — when ``True`` and *instance* is a function that
+        returns another function, the returned function is itself wired through
+        the container before being handed back to the caller.
 
-    def __register(self,
-                   registration_type: 'RegistrationType',
-                   registration_object: Callable,
-                   key: Optional[ContainerKey] = None,
-                   factory_args: Optional[list[ContainerObject]]=None,
-                   factory_kwargs: Optional[dict[str, ContainerObject]]=None,
-                   inject_returns: bool = False,
-                   inject_items: bool = False,
-                   condition: Optional[Callable[[...], bool] | Callable[[], bool]] = None,
-                   condition_args: Optional[list[ContainerObject]]=None,
-                   condition_kwargs: Optional[dict[str, ContainerObject]]=None,
-                   throw_if_condition_not_satisfied: bool = False):
+        ``inject_items`` — when ``True`` and *instance* is a list, each element
+        is individually processed through the container's injection logic.
+
+        ``condition`` / ``condition_args`` / ``condition_kwargs`` — optional
+        callable evaluated at ``build()`` time.  When it returns ``False`` the
+        registration is skipped.
+
+        ``throw_if_condition_not_satisfied`` — when ``True`` a skipped condition
+        raises ``PartialContainerError`` instead of silently omitting the entry.
+        """
+        self.__register(
+            RegistrationType.SINGLETON, instance, key,
+            None, None, inject_returns, inject_items,
+            condition, condition_args, condition_kwargs,
+            throw_if_condition_not_satisfied,
+        )
+
+    def register_transient(
+        self,
+        instance: ContainerObject,
+        key: ContainerKey | None = None,
+        inject_returns: bool = False,
+        inject_items: bool = False,
+        condition: Callable[..., bool] | None = None,
+        condition_args: list[ContainerObject] | None = None,
+        condition_kwargs: dict[str, ContainerObject] | None = None,
+        throw_if_condition_not_satisfied: bool = False,
+    ) -> None:
+        """
+        Register *instance* as a transient.
+
+        A fresh copy is produced on every ``resolve`` call: functions are cloned
+        via ``FunctionType`` reconstruction, all other objects via ``deepcopy``.
+
+        ``condition`` is evaluated lazily at each ``resolve`` call (not at
+        ``build()`` time), so the condition can depend on runtime state.
+
+        See ``register_singleton`` for a description of the remaining parameters.
+        """
+        self.__register(
+            RegistrationType.TRANSIENT, instance, key,
+            None, None, inject_returns, inject_items,
+            condition, condition_args, condition_kwargs,
+            throw_if_condition_not_satisfied,
+        )
+
+    def register_singleton_factory(
+        self,
+        factory: Callable,
+        key: ContainerKey | None = None,
+        factory_args: list[ContainerObject] | None = None,
+        factory_kwargs: dict[str, ContainerObject] | None = None,
+        inject_returns: bool = False,
+        condition: Callable[..., bool] | None = None,
+        condition_args: list[ContainerObject] | None = None,
+        condition_kwargs: dict[str, ContainerObject] | None = None,
+        throw_if_condition_not_satisfied: bool = False,
+    ) -> None:
+        """
+        Register *factory* as a singleton factory.
+
+        *factory* is called once at ``build()`` time; its return value is cached
+        and returned on every subsequent ``resolve`` call.
+
+        ``factory_args`` / ``factory_kwargs`` — positional and keyword arguments
+        passed to *factory*.  Items that are ``FromContainer`` descriptors are
+        resolved from the container before the call.
+
+        See ``register_singleton`` for a description of the remaining parameters.
+        """
+        self.__register(
+            RegistrationType.SINGLETON_FACTORY, factory, key,
+            factory_args, factory_kwargs, inject_returns, False,
+            condition, condition_args, condition_kwargs,
+            throw_if_condition_not_satisfied,
+        )
+
+    def register_transient_factory(
+        self,
+        factory: Callable,
+        key: ContainerKey | None = None,
+        factory_args: list[ContainerObject] | None = None,
+        factory_kwargs: dict[str, ContainerObject] | None = None,
+        inject_returns: bool = False,
+        condition: Callable[..., bool] | None = None,
+        condition_args: list[ContainerObject] | None = None,
+        condition_kwargs: dict[str, ContainerObject] | None = None,
+        throw_if_condition_not_satisfied: bool = False,
+    ) -> None:
+        """
+        Register *factory* as a transient factory.
+
+        *factory* is called on every ``resolve`` call, producing a fresh object
+        each time.  ``condition`` is evaluated lazily at each ``resolve`` call.
+
+        See ``register_singleton_factory`` for a description of the remaining
+        parameters.
+        """
+        self.__register(
+            RegistrationType.TRANSIENT_FACTORY, factory, key,
+            factory_args, factory_kwargs, inject_returns, False,
+            condition, condition_args, condition_kwargs,
+            throw_if_condition_not_satisfied,
+        )
+
+    def __register(
+        self,
+        registration_type: RegistrationType,
+        obj: ContainerObject,
+        key: ContainerKey | None,
+        factory_args: list[ContainerObject] | None,
+        factory_kwargs: dict[str, ContainerObject] | None,
+        inject_returns: bool,
+        inject_items: bool,
+        condition: Callable[..., bool] | None,
+        condition_args: list[ContainerObject] | None,
+        condition_kwargs: dict[str, ContainerObject] | None,
+        throw_if_condition_not_satisfied: bool,
+    ) -> None:
+        """
+        Common implementation for all ``register_*`` methods.
+
+        When the same *key* is registered a second time, both registrations are
+        promoted to a ``ListOfDependencies`` group stored under the group key
+        ``ListOfDependencies[actual_key]``.  A third registration appends to the
+        existing group.
+        """
         if self.__is_built:
-            raise PartialContainerException("Container already built")
+            raise PartialContainerError("Container already built")
 
-        actual_key = key if key is not None else registration_object
+        actual_key = key if key is not None else obj
+        registration = Registration(
+            type=registration_type,
+            key=actual_key,
+            obj=obj,
+            factory_args=factory_args,
+            factory_kwargs=factory_kwargs,
+            inject_returns=inject_returns,
+            inject_items=inject_items,
+            condition=condition,
+            condition_args=condition_args,
+            condition_kwargs=condition_kwargs,
+            throw_if_condition_not_satisfied=throw_if_condition_not_satisfied,
+        )
 
-        registration = Container.Registration(registration_type,
-                                              actual_key,
-                                              registration_object,
-                                              factory_args=factory_args,
-                                              factory_kwargs=factory_kwargs,
-                                              inject_returns=inject_returns,
-                                              inject_items=inject_items,
-                                              condition=condition,
-                                              condition_args=condition_args,
-                                              condition_kwargs=condition_kwargs,
-                                              throw_if_condition_not_satisfied=throw_if_condition_not_satisfied)
-        if Container.ListOfDependencies[actual_key] in self._registered and isinstance(self._registered[Container.ListOfDependencies[actual_key]], Container.ListOfDependencies):
-            self._registered[Container.ListOfDependencies[actual_key]].append(registration)
+        group_key = Container.ListOfDependencies[actual_key]
+        if group_key in self._registered:
+            self._registered[group_key].append(registration)
         elif actual_key in self._registered:
-            container = Container.ListOfDependencies()
-            container.registrations.append(self._registered[actual_key])
-            container.registrations.append(registration)
-            self._registered[Container.ListOfDependencies[actual_key]] = container
+            group = Container.ListOfDependencies()
+            group.append(self._registered[actual_key])
+            group.append(registration)
+            self._registered[group_key] = group
             del self._registered[actual_key]
         else:
             self._registered[actual_key] = registration
-        return None
 
     def build(self) -> None:
-        for key, registration in self._registered.items():
-            self.__build_dependency(key)
+        """
+        Build all registered dependencies in topological order.
+
+        Dependencies are always built before the things that depend on them.
+        Circular dependencies are detected and reported with a descriptive path.
+        """
+        build_order = _topological_sort(self.__analyser.build_graph())
+        for key in build_order:
+            self.__ensure_built(key)
         self.__is_built = True
 
-    def __create_build_dict_value(self,
-                                  registration: 'Container.Registration',
-                                  value: Any):
-        return Container.BuiltDictValue(registration, value, self.__execute_with_injections)
+    def __ensure_built(
+        self,
+        registration_key: ContainerKey,
+    ) -> tuple[ContainerKey | None, ContainerKey | None] | None:
+        """
+        Ensure *registration_key* is built and cached in ``__built``.
 
-    def __build_dependency(self, registration_key: ContainerKey) -> None | tuple[ContainerKey | None, list[ContainerKey] | None]: # TODO: Add circular dependency tracking
+        Returns one of:
+        - ``None`` — single registration whose condition was not met (no throw).
+        - ``(item_key, None)`` — single registration built successfully.
+        - ``(item_key_or_None, list_key)`` — group built.
+        """
         if registration_key not in self._registered:
-            raise PartialContainerException(f"The object with key {registration_key} is not registered")
+            raise PartialContainerError(
+                f"The object with key {registration_key} is not registered"
+            )
 
-        built_dependencies = []
-        multiple_registrations = isinstance(self._registered[registration_key], Container.ListOfDependencies)
+        multiple = isinstance(
+            self._registered[registration_key], Container.ListOfDependencies
+        )
 
-        if multiple_registrations:
-            already_built_item_key = registration_key.__args__[0] if registration_key.__args__[0] in self.__built else None
-            already_built_list_key = list[already_built_item_key] if list[already_built_item_key] in self.__built else None
-
-            if already_built_item_key or already_built_list_key:
-                return already_built_item_key, already_built_list_key
+        if multiple:
+            item_key = registration_key.__args__[0]
+            list_key = list[item_key]
+            if item_key in self.__built or list_key in self.__built:
+                return (
+                    item_key if item_key in self.__built else None,
+                    list_key if list_key in self.__built else None,
+                )
         else:
             if registration_key in self.__built:
                 return registration_key, None
 
-        registrations = self._registered[registration_key].registrations if multiple_registrations else [self._registered[registration_key]]
-        for registration in registrations:
-            if registration.condition is not None and registration.type not in [RegistrationType.TRANSIENT_FACTORY, RegistrationType.TRANSIENT]:
-                if not self.__execute_with_injections(registration.condition, registration.condition_args, registration.condition_kwargs):
-                    continue
-            built_dependencies.append(self.__build_registration(registration))
+        registrations: list[Registration] = (
+            self._registered[registration_key].registrations
+            if multiple
+            else [self._registered[registration_key]]
+        )
 
-        if len(built_dependencies) == 0:
-            if multiple_registrations:
+        built_pairs: list[tuple[Registration, Any]] = []
+        for reg in registrations:
+            if (
+                reg.condition is not None
+                and reg.type not in (RegistrationType.TRANSIENT, RegistrationType.TRANSIENT_FACTORY)
+                and not self.__execute_with_injections(
+                    reg.condition, reg.condition_args, reg.condition_kwargs
+                )
+            ):
+                continue
+            built_pairs.append((reg, self.__build_registration(reg)))
+
+        if not built_pairs:
+            if multiple:
                 if any(r.throw_if_condition_not_satisfied for r in registrations):
-                    raise PartialContainerException(f"No objects with key {registration_key} were built because built conditions have not been met for any of the registrations.")
+                    raise PartialContainerError(
+                        f"No objects with key {registration_key} were built because built "
+                        f"conditions have not been met for any of the registrations."
+                    )
+                item_key = registration_key.__args__[0]
+                list_key = list[item_key]
+                self.__built[list_key] = GroupBuilt(registrations[0], [])
+                return None, list_key
             else:
                 if registrations[0].throw_if_condition_not_satisfied:
-                    raise PartialContainerException(f"No object with key {registration_key} was built because the built condition has not been met.")
-                else:
-                    return None
+                    raise PartialContainerError(
+                        f"No object with key {registration_key} was built because the "
+                        f"built condition has not been met."
+                    )
+                return None
 
-        if multiple_registrations:
-            built_item_key = None
-            if len(built_dependencies) == 1:
-                built_item_key = registration_key.__args__[0]
-                self.__built[built_item_key] = self.__create_build_dict_value(registration, built_dependencies[0])
+        def _wrap(reg: Registration, raw: Any) -> SingletonBuilt | TransientBuilt:
+            return (
+                TransientBuilt(reg, raw)
+                if isinstance(raw, TransientContainer)
+                else SingletonBuilt(reg, raw)
+            )
 
-            built_list_key = list[registration_key.__args__[0]]
-            self.__built[built_list_key] = self.__create_build_dict_value(registration, built_dependencies)
+        typed_items = [_wrap(reg, raw) for reg, raw in built_pairs]
 
-            return built_item_key, built_list_key
+        if multiple:
+            item_key = registration_key.__args__[0]
+            list_key = list[item_key]
+            built_item_key: ContainerKey | None = None
+            if len(typed_items) == 1:
+                built_item_key = item_key
+                self.__built[item_key] = typed_items[0]
+            self.__built[list_key] = GroupBuilt(registrations[0], typed_items)
+            return built_item_key, list_key
         else:
-            self.__built[registration_key] = self.__create_build_dict_value(registration, built_dependencies[0])
+            self.__built[registration_key] = typed_items[0]
             return registration_key, None
 
-    def __build_registration(self, registration: 'Container.Registration'):
-        match registration:
-            case _ if registration.type == RegistrationType.SINGLETON and isinstance(registration.obj,
-                                                                                     FromContainer):
-                self.__build_dependency(registration.obj.source_key)
-                return registration.obj(self.__built)
-            case _ if registration.type == RegistrationType.TRANSIENT and isinstance(registration.obj,
-                                                                                     FromContainer):
-                transient_container = Container.TransientContainer(self.__execute_transient_from_container, registration)
-                return transient_container
-            case _ if registration.type == RegistrationType.SINGLETON \
-                      and not isinstance(registration.obj, FromContainer) \
-                      and isfunction(registration.obj):
-                partial_func = self.__build_partial(registration.obj, registration.inject_returns)
-                return partial_func
-            case _ if registration.type == RegistrationType.TRANSIENT \
-                      and not isinstance(registration.obj, FromContainer) \
-                      and isfunction(registration.obj):
-                transient_container = Container.TransientContainer(self.__execute_transient_function, registration)
-                return transient_container
-            case _ if registration.type == RegistrationType.SINGLETON \
-                      and isinstance(registration.obj, list) \
-                      and registration.inject_items:
-                injected_list = []
-                for item in registration.obj:
-                     injected_list.append(self.__build_registration(replace(registration, obj=item)))
-                return injected_list
-            case _ if registration.type == RegistrationType.TRANSIENT \
-                      and isinstance(registration.obj, list) \
-                      and registration.inject_items:
-                transient_container = Container.TransientContainer(self.__execute_transient_list_items, registration)
-                return transient_container
-            case _ if registration.type == RegistrationType.SINGLETON \
-                      and not isinstance(registration.obj, FromContainer) \
-                      and not isfunction(registration.obj):
-                return registration.obj
-            case _ if (registration.type == RegistrationType.TRANSIENT
-                       and not isinstance(registration.obj, FromContainer)
-                       and not isfunction(registration.obj)):
-                transient_container = Container.TransientContainer(self.__execute_transient_instance, registration)
-                return transient_container
-            case _ if registration.type == RegistrationType.SINGLETON_FACTORY:
-                return self.__execute_singleton_factory(registration)
-            case _ if registration.type == RegistrationType.TRANSIENT_FACTORY:
-                transient_container = Container.TransientContainer(self.__execute_transient_factory, registration)
-                return transient_container
+    def __lookup_param_entry(
+        self,
+        reg_key: ContainerKey,
+        param_is_list: bool,
+    ) -> BuiltEntry | None:
+        """
+        Bridge from ``_FunctionWirer`` into the Container's build state.
+
+        Ensures *reg_key* is built, resolves the correct dict key based on
+        whether the parameter expects a scalar or a list, and returns the
+        ``BuiltEntry`` — or ``None`` when condition-blocked or ambiguous.
+        """
+        built_result = self.__ensure_built(reg_key)
+        if built_result is None:
+            return None
+        item_key, list_key = built_result
+        resolved_key = list_key if (param_is_list and list_key is not None) else item_key
+        if resolved_key is None or resolved_key not in self.__built:
+            return None
+        return self.__built[resolved_key]
+
+    def __build_registration(self, reg: Registration) -> Any:
+        """
+        Build a single ``Registration`` into its runtime value or ``TransientContainer``.
+
+        Dispatches on ``(registration_type, object_category)`` — all arms are
+        explicit and exhaustiveness is visible at a glance.
+        """
+        category = _registration_category(reg.obj, reg.inject_items)
+        match (reg.type, category):
+            case (RegistrationType.SINGLETON, "from_container"):
+                self.__ensure_built(reg.obj.source_key)
+                return reg.obj(self.__resolve_value_by_key)
+
+            case (RegistrationType.TRANSIENT, "from_container"):
+                return TransientContainer(self.__execute_transient_from_container, reg)
+
+            case (RegistrationType.SINGLETON, "function"):
+                return self.__wirer.wire(reg.obj, reg.inject_returns)
+
+            case (RegistrationType.TRANSIENT, "function"):
+                return TransientContainer(self.__execute_transient_function, reg)
+
+            case (RegistrationType.SINGLETON, "list"):
+                return [
+                    self.__build_registration(replace(reg, obj=item))
+                    for item in reg.obj
+                ]
+
+            case (RegistrationType.TRANSIENT, "list"):
+                return TransientContainer(self.__execute_transient_list_items, reg)
+
+            case (RegistrationType.SINGLETON, "instance"):
+                return reg.obj
+
+            case (RegistrationType.TRANSIENT, "instance"):
+                return TransientContainer(self.__execute_transient_instance, reg)
+
+            case (RegistrationType.SINGLETON_FACTORY, _):
+                return self.__execute_singleton_factory(reg)
+
+            case (RegistrationType.TRANSIENT_FACTORY, _):
+                return TransientContainer(self.__execute_transient_factory, reg)
+
             case _:
-                raise PartialContainerException("Unsupported registration type and configuration")
-
-    def __execute_singleton_factory(self, registration: 'Container.Registration') -> Any:
-        obj = self.__execute_with_injections(registration.obj,
-                                             registration.factory_args,
-                                             registration.factory_kwargs)
-
-        return self.__execute_factory(obj, registration.inject_returns)
-
-    def __execute_transient_list_items(self, registration: 'Container.Registration') -> Any:
-        injected_list = []
-        for item in registration.obj:
-             injected_list.append(self.__build_registration(replace(registration, obj=self.__copy(item))))
-        return injected_list
-
-    def __execute_transient_instance(self, registration: 'Container.Registration') -> Any:
-        return self.__copy(registration.obj)
-
-    def __execute_transient_from_container(self, registration: 'Container.Registration') -> Any:
-        self.__build_dependency(registration.obj.source_key)
-        return registration.obj(self.__built)
-
-    def __execute_transient_function(self, registration: 'Container.Registration') -> Any:
-        partial_func = self.__build_partial(self.__copy(registration.obj), registration.inject_returns)
-        return partial_func
-
-    def __execute_transient_factory(self, registration: 'Container.Registration') -> Any:
-        obj = self.__execute_with_injections(registration.obj,
-                                             registration.factory_args,
-                                             registration.factory_kwargs)
-        return self.__execute_factory(obj, registration.inject_returns)
-
-    def __execute_factory(self, obj, inject_returns):
-        match obj:
-            case _ if isfunction(obj):
-                partial_func = self.__build_partial(obj, inject_returns)
-                return partial_func
-            case _ if isinstance(obj, FromContainer):
-                raise PartialContainerException("Cannot build FromContainer object")
-            case _:
-                return obj
-
-    @staticmethod
-    def __copy(target: Any):
-        match target:
-            case _ if isfunction(target):
-                clone = FunctionType(
-                    target.__code__,
-                    target.__globals__,
-                    name=target.__name__,
-                    argdefs=target.__defaults__,
-                    closure=target.__closure__,
+                raise PartialContainerError(
+                    f"Unsupported registration type and configuration: {reg.type!r}"
                 )
-                functools.update_wrapper(clone, target)
-                if hasattr(target, "__signature__"):
-                    clone.__signature__ = inspect.signature(target)
-                if hasattr(target, "__kwdefaults__"):
-                    clone.__kwdefaults__ = target.__kwdefaults__
-                if hasattr(target, "__annotations__"):
-                    clone.__annotations__ = target.__annotations__
-                return clone
-            case _:
-                return copy.deepcopy(target)
 
-    def __execute_with_injections(self,
-                                  factory: Callable,
-                                  args: Optional[list[ContainerObject]]=None,
-                                  kwargs: Optional[dict[str, ContainerObject]]=None) -> Any:
-        match factory:
-            case _ if args is not None and kwargs is not None:
-                return factory(*self.__build_from_container_args(args), **self.__build_from_container_kwargs(kwargs))
-            case _ if args is not None and kwargs is None:
-                return factory(*self.__build_from_container_args(args))
-            case _ if args is None and kwargs is not None:
-                return factory(**self.__build_from_container_kwargs(kwargs))
-            case _:
-                return factory()
+    def __execute_transient_from_container(self, reg: Registration) -> Any:
+        """Resolve a ``FromContainer`` descriptor afresh on each transient call."""
+        self.__ensure_built(reg.obj.source_key)
+        return reg.obj(self.__resolve_value_by_key)
 
-    def __build_from_container_args(self, obj: list[ContainerObject]):
-        unwrapped = []
-        for item in obj:
+    def __execute_transient_function(self, reg: Registration) -> Any:
+        """
+        Produce a freshly cloned and wired callable for a transient function registration.
+
+        The function is cloned via ``_copy_object`` so each resolution receives an
+        independent copy with its own ``__dict__``, then wired with the current
+        container state.
+        """
+        return self.__wirer.wire(_copy_object(reg.obj), reg.inject_returns)
+
+    def __execute_transient_instance(self, reg: Registration) -> Any:
+        """Produce a deep copy of the registered instance on each transient resolution."""
+        return _copy_object(reg.obj)
+
+    def __execute_transient_list_items(self, reg: Registration) -> Any:
+        """
+        Re-copy and re-build each item in the registered list on every transient resolution.
+
+        Each element is cloned independently so mutations to one resolution cannot
+        affect another.
+        """
+        return [
+            self.__build_registration(replace(reg, obj=_copy_object(item)))
+            for item in reg.obj
+        ]
+
+    def __execute_singleton_factory(self, reg: Registration) -> Any:
+        """
+        Call the registered factory once and return its result.
+
+        ``FromContainer`` items in *factory_args* / *factory_kwargs* are resolved
+        before the call.  If the result is itself a callable, it is wired through
+        the container.
+        """
+        result = self.__execute_with_injections(
+            reg.obj, reg.factory_args, reg.factory_kwargs
+        )
+        return self.__apply_factory_result(result, reg.inject_returns)
+
+    def __execute_transient_factory(self, reg: Registration) -> Any:
+        """
+        Call the registered factory and return its result (called on every resolution).
+
+        Identical to ``__execute_singleton_factory`` in structure; the difference
+        is that the calling path triggers on every ``resolve`` rather than once at
+        ``build()`` time.
+        """
+        result = self.__execute_with_injections(
+            reg.obj, reg.factory_args, reg.factory_kwargs
+        )
+        return self.__apply_factory_result(result, reg.inject_returns)
+
+    def __apply_factory_result(self, obj: Any, inject_returns: bool) -> Any:
+        """Post-process a factory return value: wire it if it is a function."""
+        if isfunction(obj):
+            return self.__wirer.wire(obj, inject_returns)
+        if isinstance(obj, FromContainer):
+            raise PartialContainerError("Cannot build FromContainer object")
+        return obj
+
+    def __execute_with_injections(
+        self,
+        factory: Callable,
+        args: list[ContainerObject] | None = None,
+        kwargs: dict[str, ContainerObject] | None = None,
+    ) -> Any:
+        """Call *factory* with resolved args/kwargs (unwrapping ``FromContainer`` items)."""
+        resolved_args   = self.__build_from_container_args(args)    if args   is not None else []
+        resolved_kwargs = self.__build_from_container_kwargs(kwargs) if kwargs is not None else {}
+        return factory(*resolved_args, **resolved_kwargs)
+
+    def __unwrap_injectable(self, item: ContainerObject) -> Any:
+        """
+        Resolve *item* to its concrete value.
+
+        Plain objects are returned as-is.  ``FromContainer`` descriptors are
+        resolved via the container; if the resolved value is a list (i.e. the
+        source key is a group), a ``PartialContainerError`` is raised because
+        factory args must be scalar.
+        """
+        if not isinstance(item, FromContainer):
+            return item
+        self.__ensure_built(item.source_key)
+        value = item(self.__resolve_value_by_key)
+        if isinstance(value, list):
+            raise PartialContainerError(
+                f"Cannot resolve dependency from the list registered under key "
+                f"{item.source_key} because more than one object is available under this key"
+            )
+        return value
+
+    def __build_from_container_args(self, args: list[ContainerObject]) -> list[Any]:
+        """Unwrap every item in *args*, resolving ``FromContainer`` descriptors."""
+        return [self.__unwrap_injectable(item) for item in args]
+
+    def __build_from_container_kwargs(
+        self, kwargs: dict[str, ContainerObject]
+    ) -> dict[str, Any]:
+        """Unwrap every value in *kwargs*, resolving ``FromContainer`` descriptors."""
+        return {k: self.__unwrap_injectable(v) for k, v in kwargs.items()}
+
+    def __resolve_value_by_key(self, key: ContainerKey) -> Any:
+        """Look up *key* in ``__built`` and delegate to ``__resolve_value``."""
+        return self.__resolve_value(self.__built[key])
+
+    def __resolve_value(self, entry: BuiltEntry) -> Any:
+        """
+        Materialise a ``BuiltEntry`` into its concrete value.
+
+        - ``SingletonBuilt`` — returns the cached value directly.
+        - ``TransientBuilt`` — evaluates the stored ``condition`` (if any) and
+          calls the ``TransientContainer`` factory to produce a fresh value.
+        - ``GroupBuilt`` — delegates to ``__resolve_list``.
+        """
+        match entry:
+            case SingletonBuilt(value=v):
+                return v
+
+            case TransientBuilt(factory=tc, registration=reg):
+                if reg.condition is not None and not self.__execute_with_injections(
+                    reg.condition, reg.condition_args, reg.condition_kwargs
+                ):
+                    raise PartialContainerError(
+                        f"No object with key {reg.key} was built because the built "
+                        f"condition has not been met."
+                    )
+                return tc()
+
+            case GroupBuilt(items=items, first_registration=first_reg):
+                return self.__resolve_list(items, first_reg)
+
+    def __resolve_list(
+        self,
+        items: list[SingletonBuilt | TransientBuilt],
+        first_reg: Registration,
+    ) -> list[Any]:
+        """
+        Resolve a group of built entries into a plain list.
+
+        Transient items have their ``condition`` evaluated lazily at this point.
+        Items whose condition is not met are silently omitted; if *all* items are
+        omitted and at least one had ``throw_if_condition_not_satisfied=True``,
+        a ``PartialContainerError`` is raised.
+        """
+        allowed: list[Any] = []
+        any_throw = False
+
+        for item in items:
             match item:
-                case _ if isinstance(item, FromContainer):
-                    self.__build_dependency(item.source_key)
-                    injectable = item(self.__built) if item.selector is not None else self.__built[item.source_key].value
+                case TransientBuilt(factory=tc, registration=reg):
+                    if reg.condition is not None and not self.__execute_with_injections(
+                        reg.condition, reg.condition_args, reg.condition_kwargs
+                    ):
+                        if reg.throw_if_condition_not_satisfied:
+                            any_throw = True
+                        continue
+                    allowed.append(tc())
+                case SingletonBuilt(value=v):
+                    allowed.append(v)
 
-                    if isinstance(injectable, list):
-                        raise PartialContainerException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
-                    unwrapped.append(injectable)
-                case _:
-                    unwrapped.append(item)
-        return unwrapped
+        if not allowed and any_throw:
+            raise PartialContainerError(
+                f"No objects with key {first_reg.key} were built because built "
+                f"conditions have not been met for any of the registrations at the moment "
+                f"of resolution."
+            )
+        return allowed
 
-    def __build_from_container_kwargs(self, obj: dict[str, ContainerObject]):
-        unwrapped = {}
-        for key, item in obj.items():
-            match item:
-                case _ if isinstance(item, FromContainer):
-                    self.__build_dependency(item.source_key)
-                    injectable = item(self.__built) if item.selector is not None else self.__built[item.source_key].value
+    def resolve(self, key: ContainerKey) -> Any:
+        """
+        Return the built object registered under *key*.
 
-                    if isinstance(injectable, list):
-                        raise PartialContainerException(f"Cannot resolve dependency from the list of registered under key {item.source_key} because more than one object is available under this key")
-                    unwrapped[key] = injectable
-                case _:
-                    unwrapped[key] = item
-        return unwrapped
+        *key* can be any value used with ``register_*``: a type, a string, a
+        ``TypeAlias``, or the function object itself.  To retrieve a group of
+        multiple registrations, pass ``list[Key]``.
 
-    def __build_partial(self, func: Callable, inject_returns: bool) -> Callable:
-        sig = inspect.signature(func)
-
-        if len(sig.parameters) == 0:
-            return self.__get_with_returns_injected(func) if inject_returns else func
-
-        partial_args = []
-
-        last_not_registered_name = None
-        last_not_registered_annotation = None
-        for param_name, param in sig.parameters.items():
-            param_is_list = hasattr(param.annotation, '__origin__') and param.annotation.__origin__ is list
-            reg_container_type = Container.ListOfDependencies[param.annotation.__args__[0]] if param.annotation and param_is_list \
-                else Container.ListOfDependencies[param.annotation] if param.annotation \
-                else None
-
-            reg_dep_key = param_name if param_name in self._registered \
-                else param.annotation if param.annotation in self._registered \
-                else reg_container_type if reg_container_type in self._registered \
-                else None
-
-            registered_multiple_times = reg_container_type == reg_dep_key
-
-            if not reg_dep_key is None:
-                if last_not_registered_name is not None:
-                    raise PartialContainerException(f"Cannot build partial function without registered parameter {last_not_registered_name}:{last_not_registered_annotation}")
-
-                built_dep_keys = self.__build_dependency(reg_dep_key)
-
-                if built_dep_keys is None:
-                    last_not_registered_name = param_name
-                    last_not_registered_annotation = param.annotation
-                else:
-                    if param_is_list and registered_multiple_times:
-                        partial_args.append(self.__built[built_dep_keys[1]].value)
-                    else:
-                        partial_args.append(self.__built[built_dep_keys[0]].value)
-            else:
-                last_not_registered_name = param_name
-                last_not_registered_annotation = param.annotation
-
-        if len(partial_args) == 0:
-            return self.__get_with_returns_injected(func) if inject_returns else func
-
-        partial_func = partial(func, *partial_args)
-        return self.__get_with_returns_injected(partial_func) if inject_returns else partial_func
-
-    def __get_with_returns_injected(self, func):
-        if inspect.iscoroutinefunction(func):
-            async def async_func_with_injected_returns(*args, **kwargs):
-                result = await func(*args, **kwargs)
-                if isfunction(result):
-                    return self.__build_partial(result, True)
-                return result
-            return async_func_with_injected_returns
-
-        def func_with_injected_returns(*args, **kwargs):
-            result = func(*args, **kwargs)
-            if isfunction(result):
-                return self.__build_partial(result, True)
-            return result
-        return func_with_injected_returns
-
-    def resolve(self, key: ContainerKey):
+        Raises ``PartialContainerError`` when:
+        - ``build()`` has not been called yet.
+        - *key* was never registered.
+        - *key* was registered but not built (e.g. condition not satisfied at
+          build time for a singleton).
+        """
         if not self.__is_built:
-            raise PartialContainerException("Container not built")
+            raise PartialContainerError("Container not built")
 
-        if not key in self._registered and hasattr(key, '__args__') \
-                and Container.ListOfDependencies[key.__args__[0]] not in self._registered:
-            raise PartialContainerException(f"Object with key {key} not registered")
+        if (
+            key not in self._registered
+            and hasattr(key, "__args__")
+            and Container.ListOfDependencies[key.__args__[0]] not in self._registered
+        ):
+            raise PartialContainerError(f"Object with key {key} not registered")
 
-        if not key in self.__built and list[key] not in self.__built:
-            raise PartialContainerException(f"Object with key {key} not built")
+        if key not in self.__built and list[key] not in self.__built:
+            raise PartialContainerError(f"Object with key {key} not built")
 
-        return self.__built[key].value
-
-    @dataclass
-    class Registration:
-        type: 'RegistrationType'
-        key: ContainerKey
-        obj: ContainerObject
-        factory_args: Optional[list[Any]] = None
-        factory_kwargs: Optional[dict[str, Any]] = None
-        inject_returns: bool = False
-        inject_items: bool = False
-        condition: Optional[Callable[[...], bool]] = None,
-        condition_args: Optional[list[ContainerObject]] = None
-        condition_kwargs: Optional[dict[str, Any]] = None
-        throw_if_condition_not_satisfied: bool = False
-
-    T = TypeVar('T')
-    class ListOfDependencies(Generic[T]):
-        def __init__(self, *args):
-            if len(args) == 0:
-                self.registrations = []
-                return
-            self.registrations = args[0] if len(args) == 1 and isinstance(args[0], list) else args
-
-        def extend(self, registrations):
-            self.registrations.extend(registrations)
-
-        def append(self, registration):
-            self.registrations.append(registration)
-
-TDependencyKey = TypeVar('TDependencyKey', bound=ContainerKey)
-@dataclass
-class FromContainer(Generic[TDependencyKey]):
-    source_key: TDependencyKey
-    selector: Optional[Callable[[TDependencyKey], Any]] = None
-
-    def __call__(self, built: dict[TDependencyKey, Any]) -> Any:
-        match self.selector:
-            case None:
-                return built[self.source_key].value
-            case _:
-                return self.selector(built[self.source_key].value)
+        return self.__resolve_value(self.__built[key])
