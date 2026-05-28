@@ -172,6 +172,29 @@ print(fn(x=7))   # 42
 
 > **Tip:** Using `TypeAlias` keys for callable types (`type Greeter = Callable[[str], str]`) gives your dependency graph a vocabulary beyond raw types and avoids accidental collisions with built-in types like `str` or `int`.
 
+### Recommended pattern — `*` as a caller/dep separator
+
+Use `*` in your function signatures to make the contract explicit at the language level: everything to the left is the caller's responsibility; everything to the right is the container's.
+
+```python
+def process_chunk(
+    chunk: Document,            # ← caller supplies this
+    *,                          # ← separator
+    dep_extractor: Extractor,   # ← container injects these
+    dep_logger: Logger,
+) -> Result:
+    ...
+```
+
+Making dependency parameters keyword-only means they literally cannot be passed positionally by accident. The `*` also acts as a visual separator that makes the split obvious at a glance.
+
+When both a positional and a keyword-only parameter share the same type, register the dependency under the parameter's **name** as a string key so the container matches it by name without touching the caller-supplied argument:
+
+```python
+container.register_singleton(my_extractor, key="dep_extractor")
+container.register_singleton(my_logger,    key="dep_logger")
+```
+
 ---
 
 ## FromContainer

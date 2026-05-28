@@ -2,6 +2,18 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 4.0.2 - 2026-05-28
+
+_*Fixed*_
+
+- `SyntaxError: multiple exception types must be parenthesized` on Python 3.13 in `_dependency_analyser.py` — corrected `except ValueError, TypeError:` to `except (ValueError, TypeError):`
+
+## 4.0.1 - 2026-05-28
+
+_*Fixed*_
+
+- `NameError: name 'TransientContainer' is not defined` on Python 3.12 and 3.13 — reordered class definitions in `_entries.py` so `TransientContainer` is declared before the dataclasses that reference it in field annotations
+
 ## 4.0.0 - 2026-05-28
 
 _*Changed*_

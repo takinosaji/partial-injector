@@ -1,6 +1,6 @@
 [project]
 name = "partial-injector"
-version = "4.0.0"
+version = "4.0.2"
 description = "Dependency Injection for FP"
 readme = "README.md"
 license = { text = "MIT" }
