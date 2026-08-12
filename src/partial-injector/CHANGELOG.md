@@ -2,6 +2,16 @@
 
 > The changelog **must** comply to the [keep a changelog](https://keepachangelog.com/en/1.1.0) standard.
 
+## 4.1.0 - 2026-08-12
+
+_*Added*_
+
+- Optional dependency support: a parameter annotated `X | None` (also `typing.Optional[X]` / `typing.Union[X, None]`) now resolves against `X`. When `X` is registered it is injected; when `X` is unregistered or its registration condition is not met, the parameter is left open so a `= None` default yields `None`. Also applies to `list[T] | None`.
+
+_*Fixed*_
+
+- Re-applied the `except (ValueError, TypeError)` correction in `_dependency_analyser.py` — it was documented under 4.0.2 but never actually landed in the source, so the module still raised `SyntaxError` on import under Python 3.12+
+
 ## 4.0.2 - 2026-05-28
 
 _*Fixed*_

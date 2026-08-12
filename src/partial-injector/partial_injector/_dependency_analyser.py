@@ -86,7 +86,7 @@ class _DependencyAnalyser:
         deps: set[ContainerKey] = set()
         try:
             sig = inspect.signature(func)
-        except ValueError, TypeError:
+        except (ValueError, TypeError):
             return frozenset()
         for param_name, param in sig.parameters.items():
             reg_key, _ = _find_param_key(self._registered, self._lod, param_name, param)

@@ -19,8 +19,8 @@ import functools
 import inspect
 from collections import deque
 from inspect import isfunction
-from types import FunctionType
-from typing import Any
+from types import FunctionType, UnionType
+from typing import Any, Union, get_args, get_origin
 
 from partial_injector._entries import (
     BuiltEntry,
@@ -94,6 +94,22 @@ def _is_dynamic_entry(entry: BuiltEntry) -> bool:
             return False
 
 
+def _unwrap_optional(annotation: Any) -> Any:
+    """
+    Reduce an optional annotation to its inner type.
+
+    ``X | None``, ``typing.Optional[X]`` and ``typing.Union[X, None]`` all
+    unwrap to ``X`` so that the dependency lookup resolves against ``X``.
+    Unions with more than one non-``None`` member (e.g. ``A | B | None``) are
+    left unchanged — they are not resolvable to a single registered key.
+    """
+    if get_origin(annotation) in (Union, UnionType):
+        non_none = [arg for arg in get_args(annotation) if arg is not type(None)]
+        if len(non_none) == 1:
+            return non_none[0]
+    return annotation
+
+
 def _find_param_key(
     registered: dict,
     lod_class: type,
@@ -111,6 +127,8 @@ def _find_param_key(
     """
     annotation = param.annotation
     no_annotation = annotation is inspect.Parameter.empty
+    if not no_annotation:
+        annotation = _unwrap_optional(annotation)
 
     param_is_list = (
         not no_annotation
