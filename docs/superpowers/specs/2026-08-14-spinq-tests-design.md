@@ -87,7 +87,7 @@ tests/test-spinq/test_spinq/
 ## Coverage
 
 Depth per function: a matching case, a no-match case, an empty-input case, and each documented
-raise. Total ≈ 80 tests.
+raise. Total ≈ 97 tests.
 
 ### `test_lists/test_case_lookup.py` — 7 functions
 
