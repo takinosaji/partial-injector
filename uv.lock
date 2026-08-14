@@ -7,6 +7,7 @@ members = [
     "partial-injector",
     "partial-injector-tests",
     "spinq",
+    "spinq-tests",
     "sversion",
     "sversion-tests",
 ]
@@ -314,6 +315,21 @@ wheels = [
 name = "spinq"
 version = "1.6.0"
 source = { editable = "src/spinq" }
+
+[[package]]
+name = "spinq-tests"
+version = "0.0.0"
+source = { editable = "tests/test-spinq" }
+dependencies = [
+    { name = "pytest" },
+    { name = "spinq" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pytest", specifier = ">=8.3.5" },
+    { name = "spinq", editable = "src/spinq" },
+]
 
 [[package]]
 name = "stevedore"
