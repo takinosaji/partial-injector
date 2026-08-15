@@ -4,6 +4,7 @@ members = [
   "src/spinq",
   "src/sversion",
   "tests/test-partial-injector",
+  "tests/test-spinq",
   "tests/test-sversion",
 ]
 
@@ -28,7 +29,7 @@ ignore = ["E501", "UP042"]
 "**/__init__.py" = ["F401"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["partial_injector", "spinq", "sversion", "test_partial_injector", "test_sversion"]
+known-first-party = ["partial_injector", "spinq", "sversion", "test_partial_injector", "test_spinq", "test_sversion"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "session"

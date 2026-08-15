@@ -17,7 +17,7 @@ uv build
 uv publish
 ```
 
-There is no dedicated test package for spinq.
+Tests live in `tests/test-spinq` — run them with `uv run pytest tests/test-spinq` from the workspace root.
 
 ## Architecture
 
